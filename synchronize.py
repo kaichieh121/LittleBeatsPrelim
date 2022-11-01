@@ -123,6 +123,17 @@ def align(audio_wv, audio_sample_rate, audio_timestamp, ecg_wv, ecg_sample_rate,
     imu_out['mag_z'] = imu_data[8][imu_start_time * imu_sample_rate: imu_end_time * imu_sample_rate]
     return audio_wv, ecg_wv, imu_out
 
+def load_sleep_label(num_data, audio_textgrid_file, interval=30):
+    tg = textgrid.TextGrid.fromFile(audio_textgrid_file.__str__())
+    label = torch.zeros(num_data)
+    for i in tg.getFirst('SLEEP'):
+        if ('SLEEP' in i.mark):
+            start = round(i.minTime / interval)
+            end = min(int(i.maxTime / interval), num_data - 1)
+            for j in range(start, end + 1):
+                label[j] = 1
+    return label
+
 def create_chunks(audio_wv, ecg_wv, target_folder, target_sr, target_chunk_size, idx):
     Path(target_folder).mkdir(parents=True, exist_ok=True)
     len = audio_wv.shape[0]

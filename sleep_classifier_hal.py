@@ -17,6 +17,8 @@ from synchronize import load_ecg_chunks, load_imu, align
 from torchmetrics import ConfusionMatrix
 from torchmetrics.classification import BinaryF1Score, BinaryCohenKappa
 
+from predictor import AudioEnergyPredictor, EcgPredictor, AccZPredictor
+
 def is_silent(audio_energy, max_amp, threshold=-35):
     silence_thresh = utils.db_to_float(threshold) * max_amp
     num_data = audio_energy.shape[0]
@@ -106,23 +108,8 @@ def visualize_data(audio_visual, bpm_visual, acc_z_visual, acc_z_var, acc_z, lab
     plt.show()
 
 
-def load_data(audio_path, label_path, interval=30):
-    waveform, sample_rate = torchaudio.load(audio_path.__str__(), normalize=False)
-    # waveform = torch.tensor(waveform*32767, dtype=torch.int16)
-    tg = textgrid.TextGrid.fromFile(label_path.__str__())
-    num_data = math.floor(waveform.shape[1]/sample_rate/interval)
-    data = waveform[0,:num_data*interval*sample_rate].view(num_data, interval*sample_rate)
-    label = torch.zeros(num_data)
-    for i in tg.getFirst('SLEEP'):
-        if(i.mark == 'SLEEP'):
-            start = round(i.minTime/interval)
-            end = min(int(i.maxTime/interval), num_data-1)
-            for j in range(start, end+1):
-                label[j] = 1
-    return data, label, waveform.max(), sample_rate
-
 def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio_file, audio_timestamp_file, audio_textgrid_file, interval=30):
-    audio_wav, audio_sr = torchaudio.load(audio_file.__str__(), normalize=False)
+    audio_wav, audio_sr = torchaudio.load(audio_file.__str__(), normalization=False)
     audio_wav = audio_wav.squeeze()
     pd_file = pd.read_csv(audio_timestamp_file.__str__(), sep=' ', header=None)
     audio_timestamp = torch.tensor(pd_file.values)[:-1]
@@ -199,13 +186,19 @@ def evaluate_classifier(pred, y):
     f1 = BinaryF1Score()(pred, y)
     kappa = BinaryCohenKappa()(pred, y)
     return conf_matrix, accuracy, f1, kappa
+
 if __name__ == '__main__':
     modes = {}
     audio_thresholds = []
     ecg_thresholds = []
     audio_ecg_thresholds = []
     imu_thresholds = []
+    # (audio_threshold, ecg_threshold, acc_z, acc_z_var)
     all_thresholds = [(-30, -15, 0.60, 0.03), (-30, -15, 0.60, 0.04), (-30, -15, 0.60, 0.05)]
+
+
+
+
     modes['audio'] = audio_thresholds
     modes['ecg'] = ecg_thresholds
     modes['audio+ecg'] = audio_ecg_thresholds

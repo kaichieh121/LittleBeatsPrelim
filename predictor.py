@@ -40,7 +40,7 @@ class EcgPredictor(Predictor):
                 res[i] = 1
         return res
 
-class ImuZPredictor(Predictor):
+class AccZPredictor(Predictor):
 
     def __init__(self, sample_rate, acc_z_threshold, acc_var_threshold, duration=30):
         super().__init__(sample_rate, acc_z_threshold, duration)
