@@ -212,8 +212,8 @@ if __name__ == '__main__':
     modes['imu'] = imu_thresholds
     modes['all'] = all_thresholds
     warnings.filterwarnings("ignore")
-    annotation_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
-    data_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/sleep_study_preliminary_recordings')
+    annotation_folder = Path('/home/kcchang3/data/LittleBeats/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
+    data_folder = Path('/home/kcchang3/data/LittleBeats/sleep_study_preliminary_recordings')
 
     output_file = open(f'./output/{datetime.now().strftime("%d-%m-%Y-%H-%M")}.txt', 'w')
     all_pred_y = {}
