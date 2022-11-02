@@ -157,7 +157,7 @@ def predict(audio_energy, bpm, laying_down, acc_z_var, avg_hr, mode, threshold):
         pred_ecg = hr_low(bpm, avg_hr + threshold[1])
         pred_acc = on_back_or_stomach(laying_down, acc_z_var, threshold[2], threshold[3])
         y = pred_audio + pred_ecg + pred_acc
-        return (y >= 2).to(torch.float)
+        return (y >= 1).to(torch.float)
 
 def pred_smooth(pred, n=3):
     # k1 = torch.tensor([0.,1.,0.])
