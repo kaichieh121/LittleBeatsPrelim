@@ -139,16 +139,13 @@ def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio
 def predict(audio_energy, bpm, laying_down, acc_z_var, avg_hr, mode, threshold):
 
     if mode == 'audio':
-        y = is_silent(audio_energy, max_amp=32767, threshold=threshold)
-        return y
+        return is_silent(audio_energy, max_amp=32767, threshold=threshold)
 
     if mode == 'ecg':
-        y = hr_low(bpm, avg_hr+threshold)
-        return y
+        return hr_low(bpm, avg_hr+threshold)
 
     if mode == 'imu':
-        y = on_back_or_stomach(laying_down, threshold)
-        return y
+        return on_back_or_stomach(laying_down, threshold)
 
     if mode == 'audio+ecg':
         pred_audio = is_silent(audio_energy, max_amp=32767, threshold=threshold[0])
@@ -161,7 +158,7 @@ def predict(audio_energy, bpm, laying_down, acc_z_var, avg_hr, mode, threshold):
         pred_ecg = hr_low(bpm, avg_hr + threshold[1])
         pred_acc = on_back_or_stomach(laying_down, acc_z_var, threshold[2], threshold[3])
         y = pred_audio + pred_ecg + pred_acc
-        return (y >= 1).to(torch.float)
+        return (y >= 2).to(torch.float)
 
 def pred_smooth(pred, n=3):
     # k1 = torch.tensor([0.,1.,0.])
@@ -189,6 +186,9 @@ def evaluate_classifier(pred, y):
     return conf_matrix, accuracy, f1, kappa
 
 if __name__ == '__main__':
+    device = "cuda" if torch.cuda.is_available() else "cpu"
+    print(f"Using {device} device")
+
     start_time = time.time()
     modes = {}
     audio_thresholds = []
@@ -196,7 +196,7 @@ if __name__ == '__main__':
     audio_ecg_thresholds = []
     imu_thresholds = []
     # (audio_threshold, ecg_threshold, acc_z, acc_z_var)
-    all_thresholds = [(-30, -15, 0.60, 0.01), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 0.2)]
+    all_thresholds = [(-30, -15, 0.60, 0.005), (-30, -15, 0.60, 0.05), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 0.2)]
 
 
 
@@ -234,7 +234,7 @@ if __name__ == '__main__':
                     imu_file = file
                 if ('timestamp' in file.name):
                     imu_timestamp_file = file
-            avg_hr = read_avg_hr(dir)
+            avg_hr = read_avg_hr(dir).to(device)
             for file in dir.iterdir():
                 if (file.match('*.wav')):
                     num = file.name.split('cleaned_')[1].split("_")[0]
@@ -246,11 +246,12 @@ if __name__ == '__main__':
                             audio_textgrid_file = f
 
                     audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, file, audio_timestamp_file, audio_textgrid_file, interval=30)
-                    audio_energy, bpm, laying_down, acc_z_var, acc_z = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=True)
+                    # audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = audio_x.to(device), audio_sr.to(device), ecg_x.to(device), ecg_sr.to(device), imu_data.to(device), imu_sr.to(device), y.to(device)
+                    audio_energy, bpm, acc_z, acc_z_var, acc_z = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=True)
                     # visualize_data(audio_energy, bpm, laying_down, acc_z_var, acc_z, y)
                     for idx, (mode, thresholds) in enumerate(modes.items()):
                         for threshold in thresholds:
-                            pred = predict(audio_energy, bpm, laying_down, acc_z_var, avg_hr, mode, threshold)
+                            pred = predict(audio_energy, bpm, acc_z, acc_z_var, avg_hr, mode, threshold)
                             pred = pred_smooth(pred)
                             all_pred_y[mode][threshold]['prediction'] = torch.cat((all_pred_y[mode][threshold]['prediction'], pred), dim=0)
                             all_pred_y[mode][threshold]['y'] = torch.cat((all_pred_y[mode][threshold]['y'], y), dim=0)

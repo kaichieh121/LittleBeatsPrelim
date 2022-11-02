@@ -8,7 +8,6 @@ import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
 import warnings
-from datetime import datetime
 import heartpy as hp
 from pathlib import Path
 from helper import silence_detect
