@@ -108,7 +108,8 @@ def visualize_data(audio_visual, bpm_visual, acc_z_visual, acc_z_var, acc_z, lab
 
 
 def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio_file, audio_timestamp_file, audio_textgrid_file, interval=30):
-    audio_wav, audio_sr = torchaudio.load(audio_file.__str__(), normalization=False)
+    audio_wav, audio_sr = torchaudio.load(audio_file.__str__())
+    audio_wav = torch.tensor(audio_wav*32767, dtype=torch.int16)
     audio_wav = audio_wav.squeeze()
     pd_file = pd.read_csv(audio_timestamp_file.__str__(), sep=' ', header=None)
     audio_timestamp = torch.tensor(pd_file.values)[:-1]
@@ -195,7 +196,7 @@ if __name__ == '__main__':
     audio_ecg_thresholds = []
     imu_thresholds = []
     # (audio_threshold, ecg_threshold, acc_z, acc_z_var)
-    all_thresholds = [(-30, -15, 0.60, 0.005), (-30, -15, 0.60, 0.05), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 0.2)]
+    all_thresholds = [(-30, -15, 0.60, 0.005), (-30, -15, 0.60, 0.05), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 20)]
 
 
 
@@ -209,6 +210,9 @@ if __name__ == '__main__':
     annotation_folder = Path('/home/kcchang3/data/LittleBeats/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
     data_folder = Path('/home/kcchang3/data/LittleBeats/sleep_study_preliminary_recordings')
 
+    # annotation_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
+    # data_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/sleep_study_preliminary_recordings')
+
     output_file = open(f'./output/{datetime.now().strftime("%d-%m-%Y-%H-%M")}.txt', 'w')
     all_pred_y = {}
 
@@ -217,8 +221,12 @@ if __name__ == '__main__':
         for threshold in thresholds:
             all_pred_y[mode][threshold] = {'prediction':torch.tensor([]), 'y':torch.tensor([])}
 
+    dir_count = 0
     for dir in annotation_folder.iterdir():
         if dir.is_dir() and not (dir.name == "No Sleep files") and not ('Processed ECG' in dir.name):
+            if(dir_count >= 1):
+                break
+            dir_count += 1
             dir_name = dir.name
             orig_audio_folder = data_folder / dir_name / "Audio_cleaned"
             orig_ecg_folder = data_folder / dir_name / "ECG_cleaned"
