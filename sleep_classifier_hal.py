@@ -1,4 +1,5 @@
 import math
+import time
 import textgrid
 import torch, torchaudio
 from torch.autograd import Variable
@@ -188,13 +189,14 @@ def evaluate_classifier(pred, y):
     return conf_matrix, accuracy, f1, kappa
 
 if __name__ == '__main__':
+    start_time = time.time()
     modes = {}
     audio_thresholds = []
     ecg_thresholds = []
     audio_ecg_thresholds = []
     imu_thresholds = []
     # (audio_threshold, ecg_threshold, acc_z, acc_z_var)
-    all_thresholds = [(-30, -15, 0.60, 0.03), (-30, -15, 0.60, 0.04), (-30, -15, 0.60, 0.05)]
+    all_thresholds = [(-30, -15, 0.60, 0.01), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 0.2)]
 
 
 
@@ -275,4 +277,6 @@ if __name__ == '__main__':
             output_file.write(f'accuracy={accuracy}\n')
             output_file.write(f'f1={f1}\n')
             output_file.write(f'kappa={kappa}\n\n')
+    print(f'runtime: {time.time()-start_time}')
+    output_file.write(f'runtime: {time.time()-start_time}')
     output_file.close()
