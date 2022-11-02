@@ -14,11 +14,9 @@ from pathlib import Path
 from helper import silence_detect
 from pydub import AudioSegment, utils
 from datetime import datetime, timezone
-from synchronize import load_ecg_chunks, load_imu, align
+from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align
 from torchmetrics import ConfusionMatrix
 from torchmetrics.classification import BinaryF1Score, BinaryCohenKappa
-
-from predictor import AudioEnergyPredictor, EcgPredictor, AccZPredictor
 
 def is_silent(audio_energy, max_amp, threshold=-35):
     silence_thresh = utils.db_to_float(threshold) * max_amp
@@ -114,6 +112,7 @@ def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio
     audio_wav = audio_wav.squeeze()
     pd_file = pd.read_csv(audio_timestamp_file.__str__(), sep=' ', header=None)
     audio_timestamp = torch.tensor(pd_file.values)[:-1]
+    # audio_wav, audio_sr, audio_timestamp = load_audio_chunks([audio_file], [audio_timestamp_file])
 
     ecg_wav, ecg_sr, ecg_timestamp = load_ecg_chunks(ecg_file, ecg_timestamp_file)
 
@@ -234,7 +233,7 @@ if __name__ == '__main__':
                     imu_file = file
                 if ('timestamp' in file.name):
                     imu_timestamp_file = file
-            avg_hr = read_avg_hr(dir).to(device)
+            avg_hr = read_avg_hr(dir)
             for file in dir.iterdir():
                 if (file.match('*.wav')):
                     num = file.name.split('cleaned_')[1].split("_")[0]
@@ -256,10 +255,7 @@ if __name__ == '__main__':
                             all_pred_y[mode][threshold]['prediction'] = torch.cat((all_pred_y[mode][threshold]['prediction'], pred), dim=0)
                             all_pred_y[mode][threshold]['y'] = torch.cat((all_pred_y[mode][threshold]['y'], y), dim=0)
 
-                    accuracy = 1 - (((pred - y) ** 2).sum()) / (pred.shape[0])
-                    if(accuracy < 0.4):
-                        print()
-                    print(f'{file.name}: {accuracy}')
+                    print(f'{file.name}')
 
     for idx, (mode, thresholds) in enumerate(modes.items()):
         for threshold in thresholds:
@@ -273,7 +269,7 @@ if __name__ == '__main__':
             if mode == 'audio+ecg':
                 output_file.write(f'mode={mode}, audio_threshold={threshold[0]}, ecg_threshold={threshold[1]}\n')
             if mode == 'all':
-                output_file.write(f'mode={mode}, audio_threshold={threshold[0]}, ecg_threshold={threshold[1]}, imu_threshold={threshold[2]}\n')
+                output_file.write(f'mode={mode}, audio_threshold={threshold[0]}, ecg_threshold={threshold[1]}, imu_threshold={threshold[2]} {threshold[3]}\n')
             output_file.write(f'conf_matrix={conf_matrix}\n')
             output_file.write(f'accuracy={accuracy}\n')
             output_file.write(f'f1={f1}\n')

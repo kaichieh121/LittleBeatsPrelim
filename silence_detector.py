@@ -206,7 +206,7 @@ if __name__ == '__main__':
     ecg_thresholds = []
     audio_ecg_thresholds = []
     imu_thresholds = []
-    all_thresholds = [(-30, -15, 0.60, 0.01), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 0.2)]
+    all_thresholds = [(-30, -15, 0.60, 100)]
     modes['audio'] = audio_thresholds
     modes['ecg'] = ecg_thresholds
     modes['audio+ecg'] = audio_ecg_thresholds
