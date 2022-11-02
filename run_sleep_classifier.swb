@@ -1,0 +1,175 @@
+#!/bin/bash
+#SBATCH --job-name="logs/finetune_image_classifier"
+#SBATCH --output="logs/finetune_image_classifier.%j.%N.out"
+#SBATCH --error="logs/finetune_image_classifier.%j.%N.err"
+#SBATCH --partition=gpux1
+#SBATCH --time=24
+#SBATCH --mail-user=kcchang3@illinois.edu
+#SBATCH --mail-type=ALL
+
+source /opt/miniconda3/etc/profile.d/conda.sh
+PYTHON_VIRTUAL_ENVIRONMENT=/home/hertin/.conda/envs/wav2vec
+conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
+
+. parse_options.sh || exit 1;
+
+function error
+{
+    if [ -z "$1" ]
+    then
+        message="fatal error"
+    else
+        message="fatal error: $1"
+    fi
+
+    echo $message
+    echo "finished at $(date)"
+    exit 1
+}
+
+DATA_DIR=/home/kcchang3/data/ArASL_Database_ImageFolder
+MODEL_NAME=vgg11
+
+export KALDI_ROOT=/home/hertin/softwares/kaldi
+export FAIRSEQ_ROOT=/home/hertin/workplace/wav2vec/fairseq
+export KENLM_ROOT=/home/hertin/softwares/kenlm/build/bin
+export RVAD_ROOT=/home/hertin/workplace/wav2vec/fairseq/examples/wav2vec/unsupervised/rVADfast
+export APC_ROOT=$(pwd)/Autoregressive-Predictive-Coding
+
+W2V=/home/hertin/models/wav2vec_vox_new.pt
+
+set -e
+set -u
+set -o pipefail
+
+stage=0
+if [ $stage -ge 0 ] && [ $stage -le 0 ]; then
+    tgt_dir=$(pwd)/manifest/ArASL/${MODEL_NAME}
+    python scripts/finetune_image_classifier.py \
+        --data_path ${DATA_DIR} \
+        --output_path ${tgt_dir} \
+        --model_name ${MODEL_NAME} \
+        --batch_size 16 \ 
+        --num_epochs 20
+fi
+
+# if [ $stage -ge 1 ] && [ $stage -le 1 ]; then
+#     tgt_dir=$(pwd)/manifest/ArASL/${MODEL_NAME}
+#     python scripts/image_cluster_faiss.py \
+#         ${tgt_dir}/train.npy \
+#         --save-dir $tgt_dir \
+#         -f "CLUS29" --sample-pct 1.0 \
+#         || error "image_cluster_faiss.py fails"
+#     cp $tgt_dir/train.tsv CLUS${n_clus}
+# fi
+
+# if [ $stage -ge 2 ] && [ $stage -le 2 ]; then
+#     tgt_dir=$(pwd)/manifest/ArASL/${MODEL_NAME}
+#     python scripts/image_apply_cluster_faiss.py \
+#         ${tgt_dir} --split train --path $tgt_dir/CLUS${n_clus} \
+#         || error "image_apply_cluster_faiss.py fails"
+#     python scripts/nmi.py \
+#         $tgt_dir/CLUS${n_clus}/train.src $tgt_dir/CLUS${n_clus}/train.tsv
+# fi
+
+# # Extract fingerspelling cluster sequence for TIMIT
+# if [ $stage -ge 3 ] && [ $stage -le 3 ]; then
+#     fs_tgt_dir=$(pwd)/manifest/asl_alphabet/${MODEL_NAME}/CLUS${n_clus}
+#     sp_tgt_dir=$(pwd)/manifest/fs_timit_${MODEL_NAME}_CLUS${n_clus}
+#     TIMIT_DIR=/home/hertin/data/timit/TIMIT
+#     bash scripts/prepare_fingerspell_timit.sh \
+#         ${TIMIT_DIR} ${sp_tgt_dir} ${fs_tgt_dir} ${W2V}
+# fi
+
+# # GAN training
+# if [ ${stage} -le 5 ] && [ ${stop_stage} -ge 5 ]; then
+#     PREFIX=w2v_unsup_gan_xp
+
+#     # For wav2vec-U, audio features are pre-segmented
+#     CONFIG_NAME=w2vu
+#     TASK_DATA=$(pwd)/manifest/fs_timit/matched/feat/precompute_pca512_cls128_mean_pooled
+
+#     # Unpaired text input
+#     TEXT_DATA=$(pwd)/manifest/fs_timit/matched/phones # path to fairseq-preprocessed GAN data (phones dir)
+#     KENLM_PATH=$(pwd)/manifest/fs_timit/matched/phones/train_text_phn.04.bin  # KenLM 4-gram phoneme language model (LM data = GAN data here)
+
+#     PYTHONPATH=$FAIRSEQ_ROOT PREFIX=$PREFIX fairseq-hydra-train \
+#             -m --config-dir config/gan \
+#             --config-name $CONFIG_NAME \
+#             task.data=${TASK_DATA} \
+#             task.text_data=${TEXT_DATA} \
+#             task.kenlm_path=${KENLM_PATH} \
+#             common.user_dir=${FAIRSEQ_ROOT}/examples/wav2vec/unsupervised \
+#             model.code_penalty=4,2 model.gradient_penalty=2.0,1.5 \
+#             model.smoothness_weight=1.0 'common.seed=range(0,1)'
+
+#     # PYTHONPATH=$FAIRSEQ_ROOT PREFIX=$PREFIX fairseq-hydra-train \
+#     #      -m --config-dir config/gan \
+#     #      --config-name $CONFIG_NAME \
+#     #      task.data=${TASK_DATA} \
+#     #      task.text_data=${TEXT_DATA} \
+#     #      task.kenlm_path=${KENLM_PATH} \
+#     #      common.user_dir=${FAIRSEQ_ROOT}/examples/wav2vec/unsupervised \
+#     #      model.code_penalty=4,2 model.gradient_penalty=2.0,1.5 \
+#     #      model.smoothness_weight=0.75 'common.seed=range(0,1)'
+
+#     # PYTHONPATH=$FAIRSEQ_ROOT PREFIX=$PREFIX fairseq-hydra-train \
+#     #        -m --config-dir config/gan \
+#     #        --config-name $CONFIG_NAME \
+#     #        task.data=${TASK_DATA} \
+#     #        task.text_data=${TEXT_DATA} \
+#     #        task.kenlm_path=${KENLM_PATH} \
+#     #        common.user_dir=${FAIRSEQ_ROOT}/examples/wav2vec/unsupervised \
+#     #        model.code_penalty=4,2 model.gradient_penalty=2.0,1.5 \
+#     #        model.smoothness_weight=0.5 'common.seed=range(0,1)'
+# fi
+
+# # TIMIT character-based topline
+# if [ $stage -ge 6 ] && [ $stage -le 6 ]; then
+#     TIMIT_DIR=/home/hertin/data/timit/TIMIT
+#     tgt_dir=$(pwd)/manifest/timit
+#     bash scripts/prepare_timit.sh ${TIMIT_DIR} ${tgt_dir} ${W2V}
+# fi
+
+# # Topline GAN training
+# if [ ${stage} -ge 7 ] && [ ${stop_stage} -le 7 ]; then
+#     PREFIX=w2v_unsup_gan_xp
+
+#     # For wav2vec-U, audio features are pre-segmented
+#     CONFIG_NAME=w2vu
+#     TASK_DATA=$(pwd)/manifest/timit/matched/feat/precompute_pca512_cls128_mean_pooled
+
+#     # Unpaired text input
+#     TEXT_DATA=$(pwd)/manifest/timit/matched/phones # path to fairseq-preprocessed GAN data (phones dir)
+#     KENLM_PATH=$(pwd)/manifest/timit/matched/phones/train_text_phn.04.bin  # KenLM 4-gram phoneme language model (LM data = GAN data here)
+
+#     # PYTHONPATH=$FAIRSEQ_ROOT PREFIX=$PREFIX fairseq-hydra-train \
+#     #        -m --config-dir config/gan \
+#     #        --config-name $CONFIG_NAME \
+#     #        task.data=${TASK_DATA} \
+#     #        task.text_data=${TEXT_DATA} \
+#     #        task.kenlm_path=${KENLM_PATH} \
+#     #        common.user_dir=${FAIRSEQ_ROOT}/examples/wav2vec/unsupervised \
+#     #        model.code_penalty=4,2 model.gradient_penalty=2.0,1.5 \
+#     #        model.smoothness_weight=1.0 'common.seed=range(0,1)'
+
+#     # PYTHONPATH=$FAIRSEQ_ROOT PREFIX=$PREFIX fairseq-hydra-train \
+#     #      -m --config-dir config/gan \
+#     #      --config-name $CONFIG_NAME \
+#     #      task.data=${TASK_DATA} \
+#     #      task.text_data=${TEXT_DATA} \
+#     #      task.kenlm_path=${KENLM_PATH} \
+#     #      common.user_dir=${FAIRSEQ_ROOT}/examples/wav2vec/unsupervised \
+#     #      model.code_penalty=4,2 model.gradient_penalty=2.0,1.5 \
+#     #      model.smoothness_weight=0.75 'common.seed=range(0,1)'
+
+#     PYTHONPATH=$FAIRSEQ_ROOT PREFIX=$PREFIX fairseq-hydra-train \
+#             -m --config-dir config/gan \
+#             --config-name $CONFIG_NAME \
+#             task.data=${TASK_DATA} \
+#             task.text_data=${TEXT_DATA} \
+#             task.kenlm_path=${KENLM_PATH} \
+#             common.user_dir=${FAIRSEQ_ROOT}/examples/wav2vec/unsupervised \
+#             model.code_penalty=4,2 model.gradient_penalty=2.0,1.5 \
+#             model.smoothness_weight=0.5 'common.seed=range(0,1)'
+# fi
