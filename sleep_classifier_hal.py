@@ -57,15 +57,17 @@ def read_avg_hr(dir):
     return float(file.read())
 
 def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=False):
-    audio_visual = torch.zeros(ecg.shape[0])
     bpm_visual = torch.zeros(ecg_x.shape[0])
-    acc_z_visual = torch.zeros(ecg_x.shape[0])
-    acc_z_var = torch.zeros(ecg_x.shape[0])
-    acc_z_mean = torch.zeros(ecg_x.shape[0])
+
+    audio_visual = audio.square().mean(dim=1).sqrt()
+    acc_z_mean = imu_data['acc_z'].mean(dim=1)
+    acc_z_visual = (imu_data['acc_z'].abs() > 9).sum(dim=1).to(torch.float)
+    z_max = 10
+    z_min = -10
+    norm_z = (imu_data['acc_z'] - z_min) / (z_max - z_min)
+    acc_z_var = torch.var(norm_z, dim=1)
 
     for j in range(audio.shape[0]):
-
-        audio_visual[j] = AudioSegment(audio[j].numpy().tobytes(), frame_rate=audio_sr, sample_width=audio[j].numpy().dtype.itemsize, channels=1).rms
 
         try:
             working_data, measures = hp.process(ecg[j].numpy(), ecg_sr)
@@ -75,13 +77,6 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothi
                 bpm_visual[j] = min(measures['bpm'], 250)
         except:
             bpm_visual[j] = 0
-
-        acc_z_mean[j] = imu_data['acc_z'][j].mean()
-        acc_z_visual[j] = (abs(imu_data['acc_z'][j]) > 9).sum()
-        z_max = 10
-        z_min = -10
-        norm_z = (imu_data['acc_z'][j]-z_min)/(z_max-z_min)
-        acc_z_var[j] = torch.var(norm_z)
 
     if smoothing:
         n = 5
@@ -117,12 +112,12 @@ def visualize_data(audio_visual, bpm_visual, acc_z_visual, acc_z_var, acc_z, lab
 
 
 def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio_file, audio_timestamp_file, audio_textgrid_file, interval=30):
-    audio_wav, audio_sr = torchaudio.load(audio_file.__str__())
-    audio_wav = torch.tensor(audio_wav*32767, dtype=torch.int16)
-    audio_wav = audio_wav.squeeze()
-    pd_file = pd.read_csv(audio_timestamp_file.__str__(), sep=' ', header=None)
-    audio_timestamp = torch.tensor(pd_file.values)[:-1]
-    # audio_wav, audio_sr, audio_timestamp = load_audio_chunks([audio_file], [audio_timestamp_file])
+    # audio_wav, audio_sr = torchaudio.load(audio_file.__str__())
+    # audio_wav = torch.tensor(audio_wav*32767, dtype=torch.int16)
+    # audio_wav = audio_wav.squeeze()
+    # pd_file = pd.read_csv(audio_timestamp_file.__str__(), sep=' ', header=None)
+    # audio_timestamp = torch.tensor(pd_file.values)[:-1]
+    audio_wav, audio_sr, audio_timestamp = load_audio_chunks([audio_file], [audio_timestamp_file])
 
     ecg_wav, ecg_sr, ecg_timestamp = load_ecg_chunks(ecg_file, ecg_timestamp_file)
 
@@ -143,7 +138,7 @@ def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio
             end = min(int(i.maxTime / interval), num_data - 1)
             for j in range(start, end + 1):
                 label[j] = 1
-    return audio_data, audio_sr, ecg_data, ecg_sr, imu_data, imu_sr, label
+    return audio_data.to(torch.float), audio_sr, ecg_data, ecg_sr, imu_data, imu_sr, label
 
 def predict(audio_energy, bpm, laying_down, acc_z_var, avg_hr, mode, threshold):
 
@@ -266,7 +261,9 @@ if __name__ == '__main__':
                             audio_textgrid_file = f
 
                     audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, file, audio_timestamp_file, audio_textgrid_file, interval=30)
-                    # audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = audio_x.to(device), audio_sr.to(device), ecg_x.to(device), ecg_sr.to(device), imu_data.to(device), imu_sr.to(device), y.to(device)
+                    # audio_x, ecg_x, y = audio_x.to(device), ecg_x.to(device), y.to(device)
+                    # for i, (key,val) in enumerate(imu_data.items()):
+                    #     imu_data[key] = imu_data[key].to(device)
                     audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=True)
                     # visualize_data(audio_energy, bpm, laying_down, acc_z_var, acc_z, y)
                     for idx, (mode, thresholds) in enumerate(modes.items()):

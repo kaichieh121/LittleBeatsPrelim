@@ -1,6 +1,6 @@
 
 import sys, os
-import math
+import textgrid
 from datetime import datetime, timezone
 from pathlib import Path
 import torch, torchaudio
@@ -15,7 +15,8 @@ def load_audio_chunks(audio_paths, audio_timestamps):
     res = None
     master_timestamp = None
     for i in range(len(audio_paths)):
-        waveform, sample_rate = torchaudio.load(audio_paths[i].__str__(), normalization=False)
+        waveform, sample_rate = torchaudio.load(audio_paths[i].__str__())
+        waveform = torch.tensor(waveform * 32767, dtype=torch.int16)
         pd_file = pd.read_csv(audio_timestamps[i].__str__(), sep=' ', header=None)
         timestamps = torch.tensor(pd_file.values)[:-1]
         start_time = timestamps[0][0]

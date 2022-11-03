@@ -32,7 +32,7 @@ set -e
 set -u
 set -o pipefail
 
-python sleep_classifier_hal.py
+python sleep_classifier_hal.py --dir_count 10000
 
 #stage=0
 #if [ $stage -ge 0 ] && [ $stage -le 0 ]; then
