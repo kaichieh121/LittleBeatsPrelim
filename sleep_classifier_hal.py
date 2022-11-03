@@ -237,9 +237,9 @@ if __name__ == '__main__':
     dir_count = 0
     for dir in annotation_folder.iterdir():
         if dir.is_dir() and not (dir.name == "No Sleep files") and not ('Processed ECG' in dir.name):
-            if(dir_count >= 1):
+            if(dir_count >= args.dir_count):
                 break
-            dir_count += args.dir_count
+            dir_count += 1
             dir_name = dir.name
             orig_audio_folder = data_folder / dir_name / "Audio_cleaned"
             orig_ecg_folder = data_folder / dir_name / "ECG_cleaned"
