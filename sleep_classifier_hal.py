@@ -1,6 +1,7 @@
 import math
 import time
 import textgrid
+import argparse
 import torch, torchaudio
 from torch.autograd import Variable
 import torch.nn.functional as F
@@ -17,6 +18,14 @@ from datetime import datetime, timezone
 from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align
 from torchmetrics import ConfusionMatrix
 from torchmetrics.classification import BinaryF1Score, BinaryCohenKappa
+
+def get_arguments():
+    parser = argparse.ArgumentParser(description='Process arguments')
+    parser.add_argument('--annotation_dir', default='/home/kcchang3/data/LittleBeats/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
+    parser.add_argument('--data_dir', default='/home/kcchang3/data/LittleBeats/sleep_study_preliminary_recordings')
+    parser.add_argument('--dir_count', type=int, default=2)
+    args = parser.parse_args()
+    return args
 
 def is_silent(audio_energy, max_amp, threshold=-35):
     silence_thresh = utils.db_to_float(threshold) * max_amp
@@ -186,6 +195,10 @@ def evaluate_classifier(pred, y):
     return conf_matrix, accuracy, f1, kappa
 
 if __name__ == '__main__':
+
+    args = get_arguments()
+
+
     device = "cuda" if torch.cuda.is_available() else "cpu"
     print(f"Using {device} device")
 
@@ -196,7 +209,7 @@ if __name__ == '__main__':
     audio_ecg_thresholds = []
     imu_thresholds = []
     # (audio_threshold, ecg_threshold, acc_z, acc_z_var)
-    all_thresholds = [(-30, -15, 0.60, 0.005), (-30, -15, 0.60, 0.05), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 20)]
+    all_thresholds = [(-30, -15, 0.60, 0.005), (-30, -15, 0.30, 0.05), (-30, -15, 0.60, 0.1), (-30, -15, 0.60, 20)]
 
 
 
@@ -207,8 +220,8 @@ if __name__ == '__main__':
     modes['imu'] = imu_thresholds
     modes['all'] = all_thresholds
     warnings.filterwarnings("ignore")
-    annotation_folder = Path('/home/kcchang3/data/LittleBeats/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
-    data_folder = Path('/home/kcchang3/data/LittleBeats/sleep_study_preliminary_recordings')
+    annotation_folder = Path(args.annotation_dir)
+    data_folder = Path(args.data_dir)
 
     # annotation_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
     # data_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/sleep_study_preliminary_recordings')
@@ -226,7 +239,7 @@ if __name__ == '__main__':
         if dir.is_dir() and not (dir.name == "No Sleep files") and not ('Processed ECG' in dir.name):
             if(dir_count >= 1):
                 break
-            dir_count += 1
+            dir_count += args.dir_count
             dir_name = dir.name
             orig_audio_folder = data_folder / dir_name / "Audio_cleaned"
             orig_ecg_folder = data_folder / dir_name / "ECG_cleaned"
@@ -254,11 +267,11 @@ if __name__ == '__main__':
 
                     audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, file, audio_timestamp_file, audio_textgrid_file, interval=30)
                     # audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = audio_x.to(device), audio_sr.to(device), ecg_x.to(device), ecg_sr.to(device), imu_data.to(device), imu_sr.to(device), y.to(device)
-                    audio_energy, bpm, acc_z, acc_z_var, acc_z = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=True)
+                    audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=True)
                     # visualize_data(audio_energy, bpm, laying_down, acc_z_var, acc_z, y)
                     for idx, (mode, thresholds) in enumerate(modes.items()):
                         for threshold in thresholds:
-                            pred = predict(audio_energy, bpm, acc_z, acc_z_var, avg_hr, mode, threshold)
+                            pred = predict(audio_energy, bpm, acc_z_percentage, acc_z_var, avg_hr, mode, threshold)
                             pred = pred_smooth(pred)
                             all_pred_y[mode][threshold]['prediction'] = torch.cat((all_pred_y[mode][threshold]['prediction'], pred), dim=0)
                             all_pred_y[mode][threshold]['y'] = torch.cat((all_pred_y[mode][threshold]['y'], y), dim=0)
