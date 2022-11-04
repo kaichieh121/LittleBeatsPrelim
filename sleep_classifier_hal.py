@@ -58,8 +58,10 @@ def read_avg_hr(dir):
 
 def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=False):
     bpm_visual = torch.zeros(ecg_x.shape[0])
-
+    # audio_visual = torch.zeros(audio.shape[0])
     audio_visual = audio.square().mean(dim=1).sqrt()
+
+
     acc_z_mean = imu_data['acc_z'].mean(dim=1)
     acc_z_visual = (imu_data['acc_z'].abs() > 9).sum(dim=1).to(torch.float)
     z_max = 10
@@ -68,7 +70,7 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothi
     acc_z_var = torch.var(norm_z, dim=1)
 
     for j in range(audio.shape[0]):
-
+        # audio_visual[j] = audio[j][audio[j].nonzero()].squeeze().square().mean().sqrt()
         try:
             working_data, measures = hp.process(ecg[j].numpy(), ecg_sr)
             if (math.isnan(measures['bpm'])):
