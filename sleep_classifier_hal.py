@@ -71,8 +71,10 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothi
 
     for j in range(audio.shape[0]):
         audio_visual[j] = audio[j][audio[j].nonzero()].squeeze().square().mean().sqrt()
+
+        ecg_zero_removed = ecg[j][ecg[j].nonzero()].squeeze()
         try:
-            working_data, measures = hp.process(ecg[j].numpy(), ecg_sr)
+            working_data, measures = hp.process(ecg_zero_removed.numpy(), ecg_sr)
             if (math.isnan(measures['bpm'])):
                 bpm_visual[j] = 0
             else:
