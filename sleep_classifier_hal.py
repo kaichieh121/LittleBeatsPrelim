@@ -70,8 +70,8 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothi
     acc_z_var = torch.var(norm_z, dim=1)
 
     for j in range(audio.shape[0]):
-        audio_wv = torch.tensor(audio[j] * 32767, dtype=torch.int16)
-        audio_visual[j] = audio_wv[audio_wv.nonzero()].squeeze().square().mean().sqrt()
+        # audio_wv = torch.tensor(audio[j] * 32767, dtype=torch.int16)
+        audio_visual[j] = audio[j][audio[j].nonzero()].squeeze().square().mean().sqrt() * 32767
 
         ecg_zero_removed = ecg[j][ecg[j].nonzero()].squeeze()
         try:
