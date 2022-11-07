@@ -86,9 +86,9 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothi
     if smoothing:
         n = 5
         kernel = torch.ones(1,1,n)
-        audio_visual = (F.conv1d(audio_visual.unsqueeze(0).unsqueeze(0), kernel, padding='same') / n).squeeze()
-        bpm_visual = (F.conv1d(bpm_visual.unsqueeze(0).unsqueeze(0), kernel, padding='same') / n).squeeze()
-        acc_z_visual = (F.conv1d(acc_z_visual.unsqueeze(0).unsqueeze(0), kernel, padding='same') / n).squeeze()
+        audio_visual = (F.conv1d(audio_visual.unsqueeze(0).unsqueeze(0), kernel, padding=n//2) / n).squeeze()
+        bpm_visual = (F.conv1d(bpm_visual.unsqueeze(0).unsqueeze(0), kernel, padding=n//2) / n).squeeze()
+        acc_z_visual = (F.conv1d(acc_z_visual.unsqueeze(0).unsqueeze(0), kernel, padding=n//2) / n).squeeze()
         # acc_z_var = (F.conv1d(acc_z_var.unsqueeze(0).unsqueeze(0), kernel, padding='same') / n).squeeze()
 
 
