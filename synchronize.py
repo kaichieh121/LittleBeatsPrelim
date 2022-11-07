@@ -135,12 +135,10 @@ def load_sleep_label(num_data, audio_textgrid_file, interval=30):
                 label[j] = 1
     return label
 
-def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_folder, idx):
+def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_folder, label_file, idx):
     audio_target_dir = target_folder / 'audio'
     ecg_target_dir = target_folder / 'ecg'
     accz_target_dir = target_folder / 'accz'
-    label_path = target_folder / 'label.csv'
-    label_file = open(label_path, mode='w')
 
     Path(audio_target_dir).mkdir(parents=True, exist_ok=True)
     Path(ecg_target_dir).mkdir(parents=True, exist_ok=True)
@@ -161,7 +159,6 @@ def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_fold
 
         label_file.write(f'{idx_name}, {int(y[i])}\n')
         idx += 1
-    label_file.close()
     return idx
 if __name__ == '__main__':
     root = Path('D:\\Projects\\LittleBeatsPrelim\\sample_data\\align_sample')

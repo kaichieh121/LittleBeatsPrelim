@@ -34,7 +34,7 @@ def main():
     data_dir = Path(args.data_dir)
     output_dir = Path(args.output_dir)
     output_dir.mkdir(parents=True, exist_ok=True)
-
+    label_file = open(output_dir / 'label.csv', mode='w')
     idx = 0
     for dir in annotation_dir.iterdir():
         if dir.is_dir() and not (dir.name == "No Sleep files") and not ('Processed ECG' in dir.name):
@@ -64,8 +64,8 @@ def main():
                             audio_textgrid_file = f
 
                     audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y = align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, file, audio_timestamp_file, audio_textgrid_file, interval=args.interval)
-                    idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y, output_dir, idx)
+                    idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, y, output_dir, label_file, idx)
                     print(f'{file.name}')
-
+    label_file.close()
 if __name__ == '__main__':
     main()
