@@ -16,7 +16,7 @@ def load_audio_chunks(audio_paths, audio_timestamps):
     master_timestamp = None
     for i in range(len(audio_paths)):
         waveform, sample_rate = torchaudio.load(audio_paths[i].__str__())
-        waveform = torch.tensor(waveform * 32767, dtype=torch.int16)
+        # waveform = torch.tensor(waveform * 32767, dtype=torch.int16)
         pd_file = pd.read_csv(audio_timestamps[i].__str__(), sep=' ', header=None)
         timestamps = torch.tensor(pd_file.values)[:-1]
         start_time = timestamps[0][0]
@@ -135,18 +135,33 @@ def load_sleep_label(num_data, audio_textgrid_file, interval=30):
                 label[j] = 1
     return label
 
-def create_chunks(audio_wv, ecg_wv, target_folder, target_sr, target_chunk_size, idx):
-    Path(target_folder).mkdir(parents=True, exist_ok=True)
-    len = audio_wv.shape[0]
-    num_chunks = len // target_sr // target_chunk_size
+def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_folder, idx):
+    audio_target_dir = target_folder / 'audio'
+    ecg_target_dir = target_folder / 'ecg'
+    accz_target_dir = target_folder / 'accz'
+    label_path = target_folder / 'label.csv'
+    label_file = open(label_path, mode='w')
 
-    for i in range(num_chunks):
-        path = (target_folder / f'audio_{idx}.wav').__str__()
-        torchaudio.save(path, audio_wv[i*target_sr*target_chunk_size:(i+1)*target_sr*target_chunk_size].unsqueeze(0), target_sr)
-        path = (target_folder / f'ecg_{idx}.wav').__str__()
-        torchaudio.save(path, ecg_wv[i * target_sr * target_chunk_size:(i + 1) * target_sr * target_chunk_size].unsqueeze(0), target_sr)
+    Path(audio_target_dir).mkdir(parents=True, exist_ok=True)
+    Path(ecg_target_dir).mkdir(parents=True, exist_ok=True)
+    Path(accz_target_dir).mkdir(parents=True, exist_ok=True)
+
+    num_data = audio.shape[0]
+
+    for i in range(num_data):
+        idx_name = str(idx).zfill(6)
+        path = (audio_target_dir / f'audio_{idx_name}.wav').__str__()
+        torchaudio.save(path, audio[i].unsqueeze(0), audio_sr)
+
+        path = (ecg_target_dir / f'ecg_{idx_name}.wav').__str__()
+        torchaudio.save(path, ecg[i].unsqueeze(0), ecg_sr)
+
+        path = (accz_target_dir / f'accz_{idx_name}.txt').__str__()
+        np.savetxt(path, imu_data['acc_z'][i].numpy())
+
+        label_file.write(f'{idx_name}, {int(y[i])}\n')
         idx += 1
-
+    label_file.close()
     return idx
 if __name__ == '__main__':
     root = Path('D:\\Projects\\LittleBeatsPrelim\\sample_data\\align_sample')

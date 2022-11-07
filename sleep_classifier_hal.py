@@ -15,7 +15,7 @@ from pathlib import Path
 from helper import silence_detect
 from pydub import AudioSegment, utils
 from datetime import datetime, timezone
-from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align
+from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align, load_sleep_label
 from torchmetrics import ConfusionMatrix
 from torchmetrics.classification import BinaryF1Score, BinaryCohenKappa
 
@@ -70,7 +70,8 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothi
     acc_z_var = torch.var(norm_z, dim=1)
 
     for j in range(audio.shape[0]):
-        audio_visual[j] = audio[j][audio[j].nonzero()].squeeze().square().mean().sqrt()
+        audio_wv = torch.tensor(audio[j] * 32767, dtype=torch.int16)
+        audio_visual[j] = audio_wv[audio_wv.nonzero()].squeeze().square().mean().sqrt()
 
         ecg_zero_removed = ecg[j][ecg[j].nonzero()].squeeze()
         try:
@@ -116,32 +117,19 @@ def visualize_data(audio_visual, bpm_visual, acc_z_visual, acc_z_var, acc_z, lab
 
 
 def align_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio_file, audio_timestamp_file, audio_textgrid_file, interval=30):
-    # audio_wav, audio_sr = torchaudio.load(audio_file.__str__())
-    # audio_wav = torch.tensor(audio_wav*32767, dtype=torch.int16)
-    # audio_wav = audio_wav.squeeze()
-    # pd_file = pd.read_csv(audio_timestamp_file.__str__(), sep=' ', header=None)
-    # audio_timestamp = torch.tensor(pd_file.values)[:-1]
+
     audio_wav, audio_sr, audio_timestamp = load_audio_chunks([audio_file], [audio_timestamp_file])
-
     ecg_wav, ecg_sr, ecg_timestamp = load_ecg_chunks(ecg_file, ecg_timestamp_file)
-
     imu_data, imu_sr, imu_timestamp = load_imu(imu_file, imu_timestamp_file)
 
     audio_wav, ecg_wav, imu_data = align(audio_wav, audio_sr, audio_timestamp, ecg_wav, ecg_sr, ecg_timestamp, imu_data, imu_sr, imu_timestamp)
 
-    tg = textgrid.TextGrid.fromFile(audio_textgrid_file.__str__())
     num_data = math.floor(audio_wav.shape[0] / audio_sr / interval)
     audio_data = audio_wav[:num_data * interval * audio_sr].view(num_data, interval * audio_sr)
     ecg_data = ecg_wav[:num_data * interval * ecg_sr].view(num_data, interval * ecg_sr)
     for i, (key, val) in enumerate(imu_data.items()):
         imu_data[key] = val[:num_data * interval * imu_sr].view(num_data, interval * imu_sr)
-    label = torch.zeros(num_data)
-    for i in tg.getFirst('SLEEP'):
-        if ('SLEEP' in i.mark):
-            start = round(i.minTime / interval)
-            end = min(int(i.maxTime / interval), num_data - 1)
-            for j in range(start, end + 1):
-                label[j] = 1
+    label = load_sleep_label(num_data, audio_textgrid_file, interval)
     return audio_data.to(torch.float), audio_sr, ecg_data, ecg_sr, imu_data, imu_sr, label
 
 def predict(audio_energy, bpm, laying_down, acc_z_var, avg_hr, mode, threshold):
