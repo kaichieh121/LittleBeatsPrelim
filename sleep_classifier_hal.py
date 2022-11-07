@@ -169,7 +169,7 @@ def pred_smooth(pred, n=3):
     # return pred
 
     kernel = torch.ones(1, 1, n)
-    pred = (F.conv1d(pred.unsqueeze(0).unsqueeze(0), kernel, padding='same') / n).squeeze().round()
+    pred = (F.conv1d(pred.unsqueeze(0).unsqueeze(0), kernel, padding=n//2) / n).squeeze().round()
     return pred
 
 def evaluate_classifier(pred, y):
