@@ -1,0 +1,46 @@
+#!/bin/bash
+#SBATCH --job-name="logs/data_preprocess"
+#SBATCH --output="logs/data_preprocess.%j.%N.out"
+#SBATCH --error="logs/data_preprocess.%j.%N.err"
+#SBATCH --partition=cpun1
+#SBATCH --time=24
+#SBATCH --mail-user=kcchang3@illinois.edu
+#SBATCH --mail-type=ALL
+
+source /opt/miniconda3/etc/profile.d/conda.sh
+PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/littlebeats
+conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
+
+. parse_options.sh || exit 1;
+
+function error
+{
+    if [ -z "$1" ]
+    then
+        message="fatal error"
+    else
+        message="fatal error: $1"
+    fi
+
+    echo $message
+    echo "finished at $(date)"
+    exit 1
+}
+
+
+set -e
+set -u
+set -o pipefail
+
+python data_preproces.py
+
+#stage=0
+#if [ $stage -ge 0 ] && [ $stage -le 0 ]; then
+#    tgt_dir=$(pwd)/manifest/ArASL/${MODEL_NAME}
+#    python scripts/finetune_image_classifier.py \
+#        --data_path ${DATA_DIR} \
+#        --output_path ${tgt_dir} \
+#        --model_name ${MODEL_NAME} \
+#        --batch_size 16 \
+#        --num_epochs 20
+#fi
