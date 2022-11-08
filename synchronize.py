@@ -4,18 +4,22 @@ import textgrid
 from datetime import datetime, timezone
 from pathlib import Path
 import torch, torchaudio
+import torchaudio.transforms as T
 import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from IPython.display import Audio, display
-from zero_insertion_audio import read_timestamps, insert_samples
 from helper import plot_waveform, plot_spectrum
 
-def load_audio_chunks(audio_paths, audio_timestamps):
+def load_audio_chunks(audio_paths, audio_timestamps, resample_rate=None):
     res = None
     master_timestamp = None
     for i in range(len(audio_paths)):
         waveform, sample_rate = torchaudio.load(audio_paths[i].__str__())
+        if(resample_rate is not None):
+            resampler = T.Resample(sample_rate, resample_rate, dtype=waveform.dtype)
+            waveform = resampler(waveform)
+            sample_rate = resample_rate
         # waveform = torch.tensor(waveform * 32767, dtype=torch.int16)
         pd_file = pd.read_csv(audio_timestamps[i].__str__(), sep=' ', header=None)
         timestamps = torch.tensor(pd_file.values)[:-1]
@@ -135,7 +139,7 @@ def load_sleep_label(num_data, audio_textgrid_file, interval=30):
                 label[j] = 1
     return label
 
-def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_folder, label_file, idx):
+def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_folder, label_file, idx, avg_hr, avg_hr_file):
     audio_target_dir = target_folder / 'audio'
     ecg_target_dir = target_folder / 'ecg'
     accz_target_dir = target_folder / 'accz'
@@ -147,7 +151,7 @@ def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_fold
     num_data = audio.shape[0]
 
     for i in range(num_data):
-        idx_name = str(idx).zfill(6)
+        idx_name = f'{str(idx).zfill(6)}'
         path = (audio_target_dir / f'audio_{idx_name}.wav').__str__()
         torchaudio.save(path, audio[i].unsqueeze(0), audio_sr)
 
@@ -158,6 +162,7 @@ def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_fold
         np.savetxt(path, imu_data['acc_z'][i].numpy())
 
         label_file.write(f'{idx_name}, {int(y[i])}\n')
+        avg_hr_file.write(f'{idx_name}, {avg_hr}\n')
         idx += 1
     return idx
 if __name__ == '__main__':
