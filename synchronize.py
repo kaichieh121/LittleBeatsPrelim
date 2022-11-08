@@ -17,7 +17,7 @@ def load_audio_chunks(audio_paths, audio_timestamps, resample_rate=None):
     for i in range(len(audio_paths)):
         waveform, sample_rate = torchaudio.load(audio_paths[i].__str__())
         if(resample_rate is not None):
-            resampler = T.Resample(sample_rate, resample_rate, dtype=waveform.dtype)
+            resampler = T.Resample(sample_rate, resample_rate)
             waveform = resampler(waveform)
             sample_rate = resample_rate
         # waveform = torch.tensor(waveform * 32767, dtype=torch.int16)
