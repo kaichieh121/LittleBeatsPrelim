@@ -48,15 +48,15 @@ def on_back_or_stomach(acc_z, acc_var, acc_z_threshold=0.6, acc_var_threshold=0.
     return res
 
 def analyze_data(audio, audio_sr, ecg, ecg_sr, accz, imu_sr, smoothing=False):
-    audio = audio.squeeze()
-    ecg = ecg.squeeze()
+    audio = audio.squeeze(dim=1)
+    ecg = ecg.squeeze(dim=1)
     bpm_visual = torch.zeros(ecg.shape[0])
     audio_visual = torch.zeros(audio.shape[0])
     # audio_visual = audio.square().mean(dim=1).sqrt()
 
 
     acc_z_mean = accz.mean(dim=2)
-    acc_z_visual = (accz.abs() > 9).sum(dim=2).to(torch.float).squeeze()
+    acc_z_visual = (accz.abs() > 9).sum(dim=2).to(torch.float).squeeze(dim=1)
     z_max = 10
     z_min = -10
     norm_z = (accz - z_min) / (z_max - z_min)
@@ -184,7 +184,7 @@ if __name__ == '__main__':
     audio_sr = 16000
     ecg_sr = 2381
     imu_sr = 150
-    batch_size = 64
+    batch_size = 5
 
     # annotation_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
     # data_folder = Path('//ad.uillinois.edu/aces/hdfs/share/McElwain-MCRP-RA/LittleBeats_RA/sleep_study_preliminary_recordings')
