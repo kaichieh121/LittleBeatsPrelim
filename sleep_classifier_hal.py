@@ -56,8 +56,8 @@ def read_avg_hr(dir):
     file = open(dir / 'avg_hr.txt', 'r')
     return float(file.read())
 
-def analyze_data(audio, audio_sr, ecg, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=False):
-    bpm_visual = torch.zeros(ecg_x.shape[0])
+def analyze_data(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, smoothing=False):
+    bpm_visual = torch.zeros(ecg.shape[0])
     audio_visual = torch.zeros(audio.shape[0])
     # audio_visual = audio.square().mean(dim=1).sqrt()
 
@@ -256,8 +256,8 @@ if __name__ == '__main__':
                     # audio_x, ecg_x, y = audio_x.to(device), ecg_x.to(device), y.to(device)
                     # for i, (key,val) in enumerate(imu_data.items()):
                     #     imu_data[key] = imu_data[key].to(device)
-                    audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, avg_hr, imu_data, imu_sr, smoothing=True)
-                    # visualize_data(audio_energy, bpm, laying_down, acc_z_var, acc_z, y)
+                    audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, smoothing=True)
+                    # visualize_data(audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean, y)
                     for idx, (mode, thresholds) in enumerate(modes.items()):
                         for threshold in thresholds:
                             pred = predict(audio_energy, bpm, acc_z_percentage, acc_z_var, avg_hr, mode, threshold)
