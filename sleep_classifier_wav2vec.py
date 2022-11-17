@@ -28,6 +28,9 @@ def get_arguments():
     parser.add_argument('--per_device_train_batch_size', type=int, default=1)
     parser.add_argument('--per_device_eval_batch_size', type=int, default=1)
     parser.add_argument('--num_train_epochs', type=int, default=1)
+    parser.add_argument('--train', action='store_true')
+    parser.add_argument('--eval', action='store_true')
+    parser.add_argument('--ckpt_path', default='/home/kcchang3/data/LittleBeats/manifest/wav2vec2-xlsr-english-speech-sleep-recognition/checkpoint-300')
 
     args = parser.parse_args()
     return args
@@ -183,41 +186,43 @@ if __name__ == '__main__':
         tokenizer=processor.feature_extractor,
     )
 
-    # trainer.train()
+    if(args.train):
+        trainer.train()
 
 
 
     '''
         Evaluation
     '''
-    model_name_or_path = output_dir / 'checkpoint-300'
-    config = AutoConfig.from_pretrained(model_name_or_path)
-    # processor = Wav2Vec2Processor.from_pretrained(model_name_or_path)
-    model = Wav2Vec2ForSpeechClassification.from_pretrained(model_name_or_path).to(device)
+    if(args.eval):
+        model_name_or_path = args.ckpt_path
+        config = AutoConfig.from_pretrained(model_name_or_path)
+        # processor = Wav2Vec2Processor.from_pretrained(model_name_or_path)
+        model = Wav2Vec2ForSpeechClassification.from_pretrained(model_name_or_path).to(device)
 
 
-    def speech_file_to_array_fn(batch, processor=processor):
-        speech_array, sampling_rate = torchaudio.load(batch["path"])
-        speech_array = speech_array.squeeze().numpy()
-        speech_array = librosa.resample(np.asarray(speech_array), sampling_rate,
-                                        processor.feature_extractor.sampling_rate)
-        batch["speech"] = speech_array
-        return batch
+        def speech_file_to_array_fn(batch, processor=processor):
+            speech_array, sampling_rate = torchaudio.load(batch["path"])
+            speech_array = speech_array.squeeze().numpy()
+            speech_array = librosa.resample(np.asarray(speech_array), sampling_rate,
+                                            processor.feature_extractor.sampling_rate)
+            batch["speech"] = speech_array
+            return batch
 
-    def predict(batch, processor=processor):
-        features = processor(batch["speech"], sampling_rate=processor.feature_extractor.sampling_rate,
-                             return_tensors="pt", padding=True)
-        input_values = features.input_values.to(device)
-        attention_mask = features.attention_mask.to(device)
-        with torch.no_grad():
-            logits = model(input_values, attention_mask=attention_mask).logits
-        pred_ids = torch.argmax(logits, dim=-1).detach().cpu().numpy()
-        batch["predicted"] = pred_ids
-        return batch
+        def predict(batch, processor=processor):
+            features = processor(batch["speech"], sampling_rate=processor.feature_extractor.sampling_rate,
+                                 return_tensors="pt", padding=True)
+            input_values = features.input_values.to(device)
+            attention_mask = features.attention_mask.to(device)
+            with torch.no_grad():
+                logits = model(input_values, attention_mask=attention_mask).logits
+            pred_ids = torch.argmax(logits, dim=-1).detach().cpu().numpy()
+            batch["predicted"] = pred_ids
+            return batch
 
-    eval_dataset = eval_dataset.map(speech_file_to_array_fn)
-    result = eval_dataset.map(predict, batched=True, batch_size=8)
-    label_names = [config.id2label[i] for i in range(config.num_labels)]
-    y_true = [config.label2id[name] for name in result["class"]]
-    y_pred = result["predicted"]
-    print(classification_report(y_true, y_pred, target_names=label_names))
+        eval_dataset = eval_dataset.map(speech_file_to_array_fn)
+        result = eval_dataset.map(predict, batched=True, batch_size=8)
+        label_names = [config.id2label[i] for i in range(config.num_labels)]
+        y_true = [config.label2id[name] for name in result["class"]]
+        y_pred = result["predicted"]
+        print(classification_report(y_true, y_pred, target_names=label_names))

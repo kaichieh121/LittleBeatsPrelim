@@ -1,0 +1,57 @@
+#!/bin/bash
+#SBATCH --job-name="logs/sleep_classifier"
+#SBATCH --output="logs/sleep_classifier.%j.%N.out"
+#SBATCH --error="logs/sleep_classifier.%j.%N.err"
+#SBATCH --partition=gpux4
+#SBATCH --time=24
+#SBATCH --mail-user=kcchang3@illinois.edu
+#SBATCH --mail-type=ALL
+
+source /opt/miniconda3/etc/profile.d/conda.sh
+PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/littlebeat2
+conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
+
+. parse_options.sh || exit 1;
+
+function error
+{
+    if [ -z "$1" ]
+    then
+        message="fatal error"
+    else
+        message="fatal error: $1"
+    fi
+
+    echo $message
+    echo "finished at $(date)"
+    exit 1
+}
+
+
+set -e
+set -u
+set -o pipefail
+stage=0
+stop_stage=0
+root_dir=/home/kcchang3/workplace/LittleBeatsPrelim
+data_dir=/home/kcchang3/data/LittleBeats
+if [ $stage -ge 0 ] && [ $stage -le 0 ]; then
+  python sleep_classifier_wav2vec.py \
+          --data_dir ${data_dir}/data_30s \
+          --manifest_dir ${root_dir}/manifest \
+          --per_device_train_batch_size 4 \
+          --per_device_eval_batch_size 4 \
+          --num_train_epochs 1 \
+          --train
+fi
+
+if [ $stage -ge 1 ] && [ $stage -le 1 ]; then
+  python sleep_classifier_wav2vec.py \
+          --data_dir ${data_dir}/data_30s \
+          --manifest_dir ${root_dir}/manifest \
+          --per_device_train_batch_size 4 \
+          --per_device_eval_batch_size 4 \
+          --num_train_epochs 1 \
+          --eval \
+          --ckpt_path ${root_dir}/wav2vec2-xlsr-english-speech-sleep-recognition/checkpoint-300
+fi
