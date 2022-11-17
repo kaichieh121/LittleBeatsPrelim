@@ -11,8 +11,6 @@ source /opt/miniconda3/etc/profile.d/conda.sh
 PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/littlebeat2
 conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
 
-. parse_options.sh || exit 1;
-
 function error
 {
     if [ -z "$1" ]

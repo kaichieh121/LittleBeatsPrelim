@@ -17,14 +17,14 @@ from pydub import AudioSegment, utils
 from datetime import datetime, timezone
 from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align
 
-def analyze_data(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, smoothing=False):
+def analyze_data(audio, audio_sr, ecg, ecg_sr, accz_data, imu_sr, smoothing=False):
     bpm_visual = torch.zeros(ecg.shape[0])
     audio_visual = torch.zeros(audio.shape[0])
     # audio_visual = audio.square().mean(dim=1).sqrt()
 
 
-    acc_z_mean = imu_data['acc_z'].mean(dim=1)
-    acc_z_visual = (imu_data['acc_z'].abs() > 9).sum(dim=1).to(torch.float)
+    acc_z_mean = accz_data.mean(dim=1)
+    acc_z_visual = (accz_data.abs() > 9).sum(dim=1).to(torch.float)
 
     for j in range(audio.shape[0]):
         # audio_wv = torch.tensor(audio[j] * 32767, dtype=torch.int16)
@@ -50,54 +50,93 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, smoothing=False
 
     return audio_visual, bpm_visual, acc_z_visual, acc_z_mean
 
-def visualize_data(audio_visual, bpm_visual, acc_z_visual, acc_z, ibi_data):
-    plt.figure()
-    plt.plot(audio_visual)
-    plt.title('Audio Energy')
-    plt.figure()
-    plt.plot(bpm_visual)
-    plt.title('BPM')
-    plt.figure()
-    plt.plot(acc_z_visual)
-    plt.title('Acceleration Z-axis Count')
-    plt.figure()
-    plt.plot(acc_z)
-    plt.title('Acceleration Z-axis')
-    plt.figure()
-    plt.plot(ibi_data)
-    plt.title('ibi')
-    plt.figure()
-    plt.plot(60/ibi_data)
-    plt.title('bpm from ibi')
-    plt.show()
+def visualize_data(fig, audio_visual, bpm_visual, acc_z, ibi_data, condition, baby_id, subplot_id):
+
+    ax1 = fig.add_subplot(4, 4, 0 * 4 + subplot_id)
+    ax2 = fig.add_subplot(4, 4, 1 * 4 + subplot_id)
+    ax3 = fig.add_subplot(4, 4, 2 * 4 + subplot_id)
+    ax4 = fig.add_subplot(4, 4, 3 * 4 + subplot_id)
+
+    ax1.title.set_text(f'Audio Energy ({condition})')
+    ax1.plot(audio_visual)
+
+    ax2.title.set_text(f'BPM ({condition})')
+    ax2.plot(bpm_visual)
+
+    ax3.title.set_text(f'Acceleration Z-axis ({condition})')
+    ax3.plot(acc_z)
+
+    ax4.title.set_text(f'ibi ({condition})')
+    ax4.plot(ibi_data)
 
 
 if __name__ == '__main__':
 
 
     warnings.filterwarnings("ignore")
-    data_folder = Path('./7511_demo_data')
+    data_folder = Path('./align_demo_data')
 
-    audio_folder = data_folder / "Audio_cleaned"
-    ecg_folder = data_folder / "ECG_cleaned"
-    imu_folder = data_folder / "IMU_cleaned"
+    for dir in data_folder.iterdir():
+        if dir.is_dir():
+            dir_name = dir.name
 
-    audio_wav, audio_sr, audio_timestamp = load_audio_chunks([audio_folder / 'BP_7551_2022-08-18-15-45-31_24KHz_Audio_cleaned_1.wav'], [audio_folder / 'BP_7551_2022-08-18-15-45-31_15832_Audio_timestamps_1.txt'])
-    ecg_wav, ecg_sr, ecg_timestamp = load_ecg_chunks(ecg_folder/'BP_7551_2022-08-18-15-45-31_ECG_cleaned.wav', ecg_folder/'BP_7551_2022-08-18-15-45-31_ECG_timestamp.txt')
-    imu_data, imu_sr, imu_timestamp = load_imu(imu_folder/'BP_7551_2022-08-18-15-45-31_IMU_cleaned.txt', imu_folder/'BP_7551_2022-08-18-15-45-31_IMU_timestamp.txt')
+            audio_folder = data_folder / dir_name / "Audio_cleaned"
+            ecg_folder = data_folder / dir_name / "ECG_cleaned"
+            imu_folder = data_folder / dir_name / "IMU_cleaned"
 
-    audio_wav, ecg_wav, imu_data = align(audio_wav, audio_sr, audio_timestamp, ecg_wav, ecg_sr, ecg_timestamp, imu_data, imu_sr, imu_timestamp)
+            audio_paths = []
+            audio_timestamps = []
+            for file in audio_folder.iterdir():
+                if (file.match('*.wav') and 'zero' not in file.name):
+                    audio_paths.append(file)
+                if ('timestamps' in file.name):
+                    audio_timestamps.append(file)
+            audio_paths.sort()
+            audio_timestamps.sort()
 
-    interval=30
-    num_data = math.floor(audio_wav.shape[0] / audio_sr / interval)
-    audio_data = audio_wav[:num_data * interval * audio_sr].view(num_data, interval * audio_sr).to(torch.float)
-    ecg_data = ecg_wav[:num_data * interval * ecg_sr].view(num_data, interval * ecg_sr)
-    for i, (key, val) in enumerate(imu_data.items()):
-        imu_data[key] = val[:num_data * interval * imu_sr].view(num_data, interval * imu_sr)
+            for file in ecg_folder.iterdir():
+                if (file.match('*cleaned.wav')):
+                    ecg_file = file
+                if ('timestamp' in file.name):
+                    ecg_timestamp_file = file
 
-    df = pd.read_csv(data_folder/'LB_ID7551_2_Still2_edited_YH_KH.ibi', sep=' ', header=None)
-    ibi_data = torch.tensor(df.values).squeeze()
+            for file in imu_folder.iterdir():
+                if (file.match('*cleaned.txt')):
+                    imu_file = file
+                if ('timestamp' in file.name):
+                    imu_timestamp_file = file
 
-    audio_energy, bpm, acc_z_percentage, acc_z_mean = analyze_data(audio_data, audio_sr, ecg_data, ecg_sr, imu_data, imu_sr, smoothing=True)
+            audio_wav, audio_sr, audio_timestamp = load_audio_chunks(audio_paths, audio_timestamps)
+            ecg_wav, ecg_sr, ecg_timestamp = load_ecg_chunks(ecg_file, ecg_timestamp_file)
+            imu_data, imu_sr, imu_timestamp = load_imu(imu_file, imu_timestamp_file)
 
-    visualize_data(audio_energy, bpm, acc_z_percentage, acc_z_mean, ibi_data)
+            audio_wav, ecg_wav, imu_data = align(audio_wav, audio_sr, audio_timestamp, ecg_wav, ecg_sr, ecg_timestamp, imu_data, imu_sr, imu_timestamp)
+
+            for file in dir.iterdir():
+                if ('CPeak_LB.csv' in file.name):
+                    df = pd.read_csv(file, delimiter=',')
+            fig = plt.figure(figsize=(15, 15))
+            fig.suptitle(f'{dir_name}')
+            for i, condition in enumerate(['Baseline', 'Still1', 'Still2', 'Still3']):
+                row = df.loc[df['Condition'] == condition]
+                start_time = int(row.iloc[:,3].item()*60)
+                end_time = int(row.iloc[:,4].item()*60)
+                audio_oi = audio_wav[int(start_time*audio_sr):int(end_time*audio_sr)]
+                ecg_oi = ecg_wav[int(start_time*ecg_sr):int(end_time*ecg_sr)]
+                accz_oi = imu_data['acc_z'][int(start_time*imu_sr):int(end_time*imu_sr)]
+
+                interval=10
+                num_data = math.floor(audio_oi.shape[0] / audio_sr / interval)
+                audio_data = audio_oi[:num_data * interval * audio_sr].view(num_data, interval * audio_sr).to(torch.float)
+                ecg_data = ecg_oi[:num_data * interval * ecg_sr].view(num_data, interval * ecg_sr)
+                accz_data = accz_oi[:num_data * interval * imu_sr].view(num_data, interval * imu_sr)
+
+                audio_energy, bpm, acc_z_percentage, acc_z_mean = analyze_data(audio_data, audio_sr, ecg_data, ecg_sr, accz_data, imu_sr, smoothing=True)
+                for file in dir.iterdir():
+                    if (condition in file.name):
+                        ibi_df = pd.read_csv(file, sep=' ', header=None)
+                        ibi_data = torch.tensor(ibi_df.values).squeeze()
+
+                visualize_data(fig, audio_energy, bpm, acc_z_mean, ibi_data, condition, dir_name, i+1)
+            fig.tight_layout(pad=5.0)
+            plt.show()
