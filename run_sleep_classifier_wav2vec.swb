@@ -34,7 +34,7 @@ stop_stage=0
 root_dir=/home/kcchang3/workplace/LittleBeatsPrelim
 data_dir=/home/kcchang3/data/LittleBeats
 if [ $stage -ge 0 ] && [ $stage -le 0 ]; then
-  python wav2vec_scripts/sleep_classifier_wav2vec.py \
+  python sleep_classifier_wav2vec.py \
           --data_dir ${data_dir}/data_30s \
           --manifest_dir ${root_dir}/manifest \
           --per_device_train_batch_size 4 \
