@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import warnings
 from datetime import datetime
-from torchmetrics.classification import BinaryF1Score, BinaryCohenKappa
 from dataloader import LittleBeatsDataset
 from transformers import AutoConfig, Wav2Vec2Processor
 from LittleBeatsPrelim.wav2vec_scripts.datacollector import DataCollatorCTCWithPadding
