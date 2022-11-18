@@ -8,6 +8,7 @@ import torch.nn.functional as F
 import matplotlib.pyplot as plt
 import numpy as np
 import pandas as pd
+import scipy as sp
 import warnings
 from datetime import datetime
 import heartpy as hp
@@ -23,7 +24,7 @@ def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
     parser.add_argument('--annotation_dir', default='/home/kcchang3/data/LittleBeats/LittleBeats_Sleep annotations/RA sleep annotations completed (for Jeff)')
     parser.add_argument('--data_dir', default='/home/kcchang3/data/LittleBeats/sleep_study_preliminary_recordings')
-    parser.add_argument('--dir_count', type=int, default=2)
+    parser.add_argument('--dir_count', type=int, default=4)
     args = parser.parse_args()
     return args
 
@@ -95,24 +96,65 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, smoothing=False
     return audio_visual, bpm_visual, acc_z_visual, acc_z_var, acc_z_mean
 
 def visualize_data(audio_visual, bpm_visual, acc_z_visual, acc_z_var, acc_z, label):
-    plt.figure()
-    plt.plot(audio_visual)
-    plt.title('Audio Energy')
-    plt.figure()
-    plt.plot(bpm_visual)
-    plt.title('BPM')
-    plt.figure()
-    plt.plot(acc_z_visual)
-    plt.title('Acceleration Z-axis Count')
-    plt.figure()
-    plt.plot(acc_z_var)
-    plt.title('Acceleration Z-axis variance')
-    plt.figure()
-    plt.plot(acc_z)
-    plt.title('Acceleration Z-axis')
-    plt.figure()
-    plt.plot(label)
-    plt.title('Label 0 wake 1 sleep')
+    def determine_label_change(label):
+        switches = []
+        cur = label[0]
+        for i in range(1, len(label)):
+            if(label[i] != cur):
+                switches.append(i)
+                cur = label[i]
+        return switches
+    def ttest(switches, data):
+        t_stat = []
+        p_value = []
+        last_switch = 0
+        for i, switch in enumerate(switches):
+            a = data[last_switch:switch]
+            b = data[switch:switches[i+1]] if (i+1)<len(switches) else data[switch:]
+            if len(a)<len(b):
+                b = b[:len(a)]
+            elif len(a)>len(b):
+                a = a[-len(b):]
+            tmp = sp.stats.ttest_rel(a, b)
+            t_stat.append(round(tmp.statistic, 2))
+            p_value.append(round(tmp.pvalue, 2))
+            last_switch = switch
+        return t_stat, p_value
+
+    switches = determine_label_change(label)
+
+
+
+
+    fig = plt.figure(figsize=(8, 16))
+    fig.suptitle(f'Sample Visualization')
+
+    ax1 = fig.add_subplot(5, 1, 1)
+    ax2 = fig.add_subplot(5, 1, 2)
+    ax3 = fig.add_subplot(5, 1, 3)
+    ax4 = fig.add_subplot(5, 1, 4)
+    ax5 = fig.add_subplot(5, 1, 5)
+
+    ax1.plot(audio_visual)
+    tstat, pvalue = ttest(switches, audio_visual)
+    ax1.title.set_text(f'Audio Energy tstat={tstat} pvalue={pvalue}')
+
+    ax2.plot(bpm_visual)
+    tstat, pvalue = ttest(switches, bpm_visual)
+    ax2.title.set_text(f'BPM tstat={tstat} pvalue={pvalue}')
+
+    ax3.plot(acc_z_visual)
+    tstat, pvalue = ttest(switches, acc_z_visual)
+    ax3.title.set_text(f'Acceleration Z-axis Count tstat={tstat} pvalue={pvalue}')
+
+    ax4.plot(acc_z)
+    tstat, pvalue = ttest(switches, acc_z)
+    ax4.title.set_text(f'Acceleration Z-axis tstat={tstat} pvalue={pvalue}')
+
+    ax5.plot(label)
+    ax5.title.set_text('Label 0 wake 1 sleep')
+
+    fig.tight_layout(pad=5.0)
     plt.show()
 
 
@@ -257,7 +299,7 @@ if __name__ == '__main__':
                     # for i, (key,val) in enumerate(imu_data.items()):
                     #     imu_data[key] = imu_data[key].to(device)
                     audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean = analyze_data(audio_x, audio_sr, ecg_x, ecg_sr, imu_data, imu_sr, smoothing=True)
-                    # visualize_data(audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean, y)
+                    visualize_data(audio_energy, bpm, acc_z_percentage, acc_z_var, acc_z_mean, y)
                     for idx, (mode, thresholds) in enumerate(modes.items()):
                         for threshold in thresholds:
                             pred = predict(audio_energy, bpm, acc_z_percentage, acc_z_var, avg_hr, mode, threshold)
