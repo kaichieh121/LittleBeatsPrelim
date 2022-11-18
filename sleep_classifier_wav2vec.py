@@ -6,7 +6,6 @@ from torch.utils.data import DataLoader
 import torch.nn.functional as F
 import warnings
 from datetime import datetime
-from torchmetrics import ConfusionMatrix
 from torchmetrics.classification import BinaryF1Score, BinaryCohenKappa
 from dataloader import LittleBeatsDataset
 from transformers import AutoConfig, Wav2Vec2Processor
@@ -40,14 +39,14 @@ def pred_smooth(pred, n=3):
     pred = (F.conv1d(pred.unsqueeze(0).unsqueeze(0), kernel, padding=n//2) / n).squeeze().round()
     return pred
 
-def evaluate_classifier(pred, y):
-    y = y.to(torch.int32)
-    pred = pred.to(torch.int32)
-    conf_matrix = ConfusionMatrix(num_classes=2)(pred, y)
-    accuracy = 1 - (((pred - y) ** 2).sum()) / (pred.shape[0])
-    f1 = BinaryF1Score()(pred, y)
-    kappa = BinaryCohenKappa()(pred, y)
-    return conf_matrix, accuracy, f1, kappa
+# def evaluate_classifier(pred, y):
+#     y = y.to(torch.int32)
+#     pred = pred.to(torch.int32)
+#     conf_matrix = ConfusionMatrix(num_classes=2)(pred, y)
+#     accuracy = 1 - (((pred - y) ** 2).sum()) / (pred.shape[0])
+#     f1 = BinaryF1Score()(pred, y)
+#     kappa = BinaryCohenKappa()(pred, y)
+#     return conf_matrix, accuracy, f1, kappa
 
 
 def label_to_id(label, label_list):
