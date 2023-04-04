@@ -1,0 +1,26 @@
+#!/bin/bash
+#SBATCH --job-name="w2v2"
+#SBATCH --output="logs/w2v2.%j.%N.out"
+#SBATCH --error="logs/w2v2.%j.%N.err"
+#SBATCH --partition=gpux4
+#SBATCH --time=24
+#SBATCH --mail-user=kcchang3@illinois.edu
+#SBATCH --mail-type=ALL
+
+module load conda_base
+module load cuda/11.2.152
+
+PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/hertin_clone
+conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
+
+WORK_DIR=/home/kcchang3/workplace/fairseq/examples/wav2vec
+MANIFEST_DIR=/home/kcchang3/workplace/LittleBeatsPrelim/manifest/lb_ecg
+save_dir=${WORK_DIR}/outputs/wav2vec-base-64gpu-lb-ecg
+
+srun --gres=gpu:4 --ntasks=1 fairseq-hydra-train \
+    task.data=${MANIFEST_DIR} \
+    checkpoint.save_dir=${save_dir} hydra.run.dir=${save_dir} \
+    common.fp16=True \
+    +optimization.update_freq='[16]' \
+    --config-dir ${WORK_DIR}/config/pretraining \
+    --config-name wav2vec2_base_librispeech
