@@ -7,8 +7,6 @@ from pathlib import Path
 import pandas as pd
 import numpy as np
 from tqdm import tqdm
-from sleep_classifier_hal import read_avg_hr
-from synchronize import create_chunks, load_audio_chunks, load_ecg_chunks, load_imu, load_sleep_label, align
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
