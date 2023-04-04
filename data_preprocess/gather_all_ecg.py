@@ -30,7 +30,7 @@ def main():
         orig_audio_folder = data_dir / dir_name / "Audio_cleaned"
         orig_ecg_folder = data_dir / dir_name / "ECG_cleaned"
         orig_imu_folder = data_dir / dir_name / "IMU_cleaned"
-        for file in orig_imu_folder.iterdir():
+        for file in orig_ecg_folder.iterdir():
             if (file.match('*cleaned.wav')):
                 ecg_file = file
             if ('timestamp' in file.name):
