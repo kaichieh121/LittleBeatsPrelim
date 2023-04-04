@@ -39,7 +39,7 @@ def main():
         resample_sr = 16000
         # resampler = T.Resample(ecg_sr, resample_sr, dtype=ecg_data.dtype)
         resampler = T.Resample(ecg_sr, resample_sr) #works on hal
-        ecg_data = resampler(ecg_data)
+        ecg_data = resampler(ecg_data)[0,:]
 
         interval = 30
         ecg_data = ecg_data[:int(ecg_data.shape[0]/resample_sr/interval)*resample_sr*interval]
