@@ -14,11 +14,11 @@ PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/hertin_clone
 conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
 
 WORK_DIR=/home/kcchang3/workplace/fairseq/examples/wav2vec
-DATA_DIR=/home/kcchang3/data/LittleBeats/segmented_data_clean/pretrain_ecg
+MANIFEST_DIR=/home/kcchang3/data/LittleBeats/segmented_data_clean/fairseq_manifest/pretrain_ecg
 save_dir=${WORK_DIR}/outputs/wav2vec-base-64gpu-lb-ecg
 
 srun --gres=gpu:4 --ntasks=1 fairseq-hydra-train \
-    task.data=${DATA_DIR} \
+    task.data=${MANIFEST_DIR} \
     checkpoint.save_dir=${save_dir} hydra.run.dir=${save_dir} \
     common.fp16=True \
     +optimization.update_freq='[16]' \
