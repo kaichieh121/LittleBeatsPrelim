@@ -37,7 +37,8 @@ def main():
                 imu_timestamp_file = file
         ecg_data, ecg_sr = torchaudio.load(ecg_file.__str__())
         resample_sr = 16000
-        resampler = T.Resample(ecg_sr, resample_sr, dtype=ecg_data.dtype)
+        # resampler = T.Resample(ecg_sr, resample_sr, dtype=ecg_data.dtype)
+        resampler = T.Resample(ecg_sr, resample_sr) #works on hal
         ecg_data = resampler(ecg_data)
 
         interval = 30
