@@ -13,7 +13,6 @@ import warnings
 from datetime import datetime
 import heartpy as hp
 from pathlib import Path
-from helper import silence_detect
 from pydub import AudioSegment, utils
 from datetime import datetime, timezone
 from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align, load_sleep_label

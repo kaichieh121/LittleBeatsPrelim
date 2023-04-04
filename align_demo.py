@@ -6,13 +6,13 @@ import torch, torchaudio
 from torch.autograd import Variable
 import torch.nn.functional as F
 import matplotlib.pyplot as plt
+import matplotlib.ticker as plticker
 import numpy as np
 import pandas as pd
 import warnings
 from datetime import datetime
 import heartpy as hp
 from pathlib import Path
-from helper import silence_detect
 from pydub import AudioSegment, utils
 from datetime import datetime, timezone
 from synchronize import load_audio_chunks, load_ecg_chunks, load_imu, align
@@ -50,24 +50,28 @@ def analyze_data(audio, audio_sr, ecg, ecg_sr, accz_data, imu_sr, smoothing=Fals
 
     return audio_visual, bpm_visual, acc_z_visual, acc_z_mean
 
-def visualize_data(fig, audio_visual, bpm_visual, acc_z, ibi_data, condition, baby_id, subplot_id):
-
+def visualize_data(fig, audio_visual, bpm_visual, acc_z, ibi_data, condition, subplot_id, x_lb, x_ibi, loc_base):
+    loc = plticker.MultipleLocator(base=loc_base)
     ax1 = fig.add_subplot(4, 4, 0 * 4 + subplot_id)
     ax2 = fig.add_subplot(4, 4, 1 * 4 + subplot_id)
     ax3 = fig.add_subplot(4, 4, 2 * 4 + subplot_id)
     ax4 = fig.add_subplot(4, 4, 3 * 4 + subplot_id)
 
     ax1.title.set_text(f'Audio Energy ({condition})')
-    ax1.plot(audio_visual)
+    ax1.plot(x_lb, audio_visual)
+    ax1.xaxis.set_major_locator(loc)
 
     ax2.title.set_text(f'BPM ({condition})')
-    ax2.plot(bpm_visual)
+    ax2.plot(x_lb, bpm_visual)
+    ax2.xaxis.set_major_locator(loc)
 
     ax3.title.set_text(f'Acceleration Z-axis ({condition})')
-    ax3.plot(acc_z)
+    ax3.plot(x_lb, acc_z)
+    ax3.xaxis.set_major_locator(loc)
 
     ax4.title.set_text(f'ibi ({condition})')
-    ax4.plot(ibi_data)
+    ax4.plot(x_ibi, ibi_data)
+    ax4.xaxis.set_major_locator(loc)
 
 
 if __name__ == '__main__':
@@ -121,6 +125,7 @@ if __name__ == '__main__':
                 row = df.loc[df['Condition'] == condition]
                 start_time = int(row.iloc[:,3].item()*60)
                 end_time = int(row.iloc[:,4].item()*60)
+
                 audio_oi = audio_wav[int(start_time*audio_sr):int(end_time*audio_sr)]
                 ecg_oi = ecg_wav[int(start_time*ecg_sr):int(end_time*ecg_sr)]
                 accz_oi = imu_data['acc_z'][int(start_time*imu_sr):int(end_time*imu_sr)]
@@ -131,12 +136,20 @@ if __name__ == '__main__':
                 ecg_data = ecg_oi[:num_data * interval * ecg_sr].view(num_data, interval * ecg_sr)
                 accz_data = accz_oi[:num_data * interval * imu_sr].view(num_data, interval * imu_sr)
 
-                audio_energy, bpm, acc_z_percentage, acc_z_mean = analyze_data(audio_data, audio_sr, ecg_data, ecg_sr, accz_data, imu_sr, smoothing=True)
+                audio_energy, bpm, acc_z_percentage, acc_z_mean = analyze_data(audio_data, audio_sr, ecg_data, ecg_sr, accz_data, imu_sr, smoothing=False)
                 for file in dir.iterdir():
                     if (condition in file.name):
                         ibi_df = pd.read_csv(file, sep=' ', header=None)
                         ibi_data = torch.tensor(ibi_df.values).squeeze()
 
-                visualize_data(fig, audio_energy, bpm, acc_z_mean, ibi_data, condition, dir_name, i+1)
+                x_axis_lb = torch.linspace(start_time, end_time, steps=num_data)
+                x_axis_ibi = torch.linspace(start_time, end_time, steps=ibi_data.shape[0])
+                if(condition=='Still1'):
+                    loc_base = 25
+                elif(condition=='Still2'):
+                    loc_base = 25
+                else:
+                    loc_base = 50
+                visualize_data(fig, audio_energy, bpm, acc_z_mean, ibi_data, condition, i+1, x_axis_lb, x_axis_ibi, loc_base)
             fig.tight_layout(pad=5.0)
             plt.show()

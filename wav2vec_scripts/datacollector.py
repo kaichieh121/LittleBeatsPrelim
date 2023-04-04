@@ -55,3 +55,25 @@ class DataCollatorCTCWithPadding:
         batch["labels"] = torch.tensor(label_features, dtype=d_type)
 
         return batch
+
+@dataclass
+class DataCollatorFreeze:
+    processor: Wav2Vec2Processor
+    padding: Union[bool, str] = True
+    max_length: Optional[int] = None
+    max_length_labels: Optional[int] = None
+    pad_to_multiple_of: Optional[int] = None
+    pad_to_multiple_of_labels: Optional[int] = None
+
+    def __call__(self, features: List[Dict[str, Union[List[int], torch.Tensor]]]) -> Dict[str, torch.Tensor]:
+        input_features = [{"input_values": feature["input_values"]} for feature in features]
+        label_features = [feature["labels"] for feature in features]
+
+
+        batch = {}
+        d_type = torch.long if isinstance(input_features[0], int) else torch.float
+        batch['input_values'] = torch.tensor(input_features[0]['input_values'], dtype=d_type)
+        d_type = torch.long if isinstance(label_features[0], int) else torch.float
+        batch["labels"] = torch.tensor(label_features, dtype=d_type)
+
+        return batch

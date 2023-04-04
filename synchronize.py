@@ -9,7 +9,6 @@ import numpy as np
 import pandas as pd
 import matplotlib.pyplot as plt
 from IPython.display import Audio, display
-from helper import plot_waveform, plot_spectrum
 
 def load_audio_chunks(audio_paths, audio_timestamps, resample_rate=None):
     res = None
@@ -21,7 +20,10 @@ def load_audio_chunks(audio_paths, audio_timestamps, resample_rate=None):
             waveform = resampler(waveform)
             sample_rate = resample_rate
         # waveform = torch.tensor(waveform * 32767, dtype=torch.int16)
-        pd_file = pd.read_csv(audio_timestamps[i].__str__(), sep=' ', header=None)
+        try:
+            pd_file = pd.read_csv(audio_timestamps[i].__str__(), sep=' ', header=None)
+        except:
+            print(audio_timestamps[i].__str__())
         timestamps = torch.tensor(pd_file.values)[:-1]
         start_time = timestamps[0][0]
         if master_timestamp is None:
@@ -143,10 +145,12 @@ def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_fold
     audio_target_dir = target_folder / 'audio'
     ecg_target_dir = target_folder / 'ecg'
     accz_target_dir = target_folder / 'accz'
+    imu_target_dir = target_folder / 'imu'
 
     Path(audio_target_dir).mkdir(parents=True, exist_ok=True)
     Path(ecg_target_dir).mkdir(parents=True, exist_ok=True)
     Path(accz_target_dir).mkdir(parents=True, exist_ok=True)
+    Path(imu_target_dir).mkdir(parents=True, exist_ok=True)
 
     num_data = audio.shape[0]
 
@@ -161,8 +165,13 @@ def create_chunks(audio, audio_sr, ecg, ecg_sr, imu_data, imu_sr, y, target_fold
         path = (accz_target_dir / f'accz_{idx_name}.txt').__str__()
         np.savetxt(path, imu_data['acc_z'][i].numpy())
 
+        path = (imu_target_dir / f'imu_{idx_name}.txt').__str__()
+        imu_array = np.concatenate((np.expand_dims(imu_data["acc_x"][i].numpy(), 0),np.expand_dims(imu_data["acc_y"][i].numpy(), 0),np.expand_dims(imu_data["acc_z"][i].numpy(), 0),np.expand_dims(imu_data["gyr_x"][i].numpy(), 0),np.expand_dims(imu_data["gyr_y"][i].numpy(), 0),np.expand_dims(imu_data["gyr_z"][i].numpy(), 0),np.expand_dims(imu_data["mag_x"][i].numpy(), 0),np.expand_dims(imu_data["mag_y"][i].numpy(), 0),np.expand_dims(imu_data["mag_z"][i].numpy(), 0)), axis=0)
+        np.savetxt(path, np.transpose(imu_array))
+
         label_file.write(f'{idx_name}, {int(y[i])}\n')
-        avg_hr_file.write(f'{idx_name}, {avg_hr}\n')
+        if(avg_hr is not None):
+            avg_hr_file.write(f'{idx_name}, {avg_hr}\n')
         idx += 1
     return idx
 if __name__ == '__main__':
