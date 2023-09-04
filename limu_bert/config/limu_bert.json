@@ -1,0 +1,36 @@
+{
+	"base_v1":
+	{
+		"feature_num" : 6,
+		"hidden": 72,
+		"hidden_ff": 144,
+		"n_layers": 4,
+		"n_heads": 4,
+		"seq_len": 120
+	},
+	"base_v2": {
+		"feature_num" : 9,
+		"hidden": 72,
+		"hidden_ff": 144,
+		"n_layers": 4,
+		"n_heads": 4,
+		"seq_len": 120
+	},
+	"base_v3": {
+		"feature_num" : 6,
+		"hidden": 72,
+		"hidden_ff": 144,
+		"n_layers": 4,
+		"n_heads": 4,
+		"seq_len": 120
+	},
+	"base_v4": {
+		"feature_num" : 6,
+		"hidden": 72,
+		"hidden_ff": 144,
+		"n_layers": 12,
+		"n_heads": 4,
+		"seq_len": 120
+	}
+}
+

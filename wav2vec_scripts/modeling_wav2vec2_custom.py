@@ -48,7 +48,7 @@ from transformers.utils import (
     replace_return_docstrings,
 )
 from transformers.models.wav2vec2.configuration_wav2vec2 import Wav2Vec2Config
-from LittleBeatsPrelim.limu_bert.limu_models import LIMUBertModel4Pretrain
+from LittleBeatsPrelim.limu_bert.limu_models import LIMUBertModel4Pretrain, LBLIMUBertModel4Pretrain
 import LittleBeatsPrelim.limu_bert.limu_utils as limu_utils
 import LittleBeatsPrelim.limu_bert.limu_models as limu_models
 
@@ -296,46 +296,38 @@ class Wav2Vec2NoLayerNormConvLayer(nn.Module):
         self.in_conv_dim = config.conv_dim[layer_id - 1] if layer_id > 0 else 1
         self.out_conv_dim = config.conv_dim[layer_id]
 
-        self.conv = nn.Conv1d(
+        self.conv1 = nn.Conv1d(
             self.in_conv_dim,
             self.out_conv_dim,
             kernel_size=config.conv_kernel[layer_id],
             stride=config.conv_stride[layer_id],
             bias=config.conv_bias,
         )
-        self.activation = ACT2FN[config.feat_extract_activation]
+        self.conv2 = nn.Conv1d(
+            self.in_conv_dim,
+            self.out_conv_dim,
+            kernel_size=config.conv_kernel[layer_id],
+            stride=config.conv_stride[layer_id],
+            bias=config.conv_bias,
+        )
+        self.activation1 = ACT2FN[config.feat_extract_activation]
+        self.activation2 = ACT2FN[config.feat_extract_activation]
 
     def forward(self, hidden_states):
-        hidden_states = self.conv(hidden_states)
-        hidden_states = self.activation(hidden_states)
+        hidden_states1 = hidden_states[:, 0, :]
+        if (len(hidden_states1.shape) == 2):
+            hidden_states1 = hidden_states1.unsqueeze(dim=1)
+        hidden_states1 = self.conv1(hidden_states1)
+        hidden_states1 = self.activation1(hidden_states1)
+
+        hidden_states2 = hidden_states[:, 1, :]
+        if (len(hidden_states2.shape) == 2):
+            hidden_states2 = hidden_states2.unsqueeze(dim=1)
+        hidden_states2 = self.conv2(hidden_states2)
+        hidden_states2 = self.activation2(hidden_states2)
+
+        hidden_states = torch.cat((hidden_states1.unsqueeze(dim=1), hidden_states2.unsqueeze(dim=1)), dim=1)
         return hidden_states
-
-
-# class Wav2Vec2LayerNormConvLayer(nn.Module):
-#     def __init__(self, config, layer_id=0):
-#         super().__init__()
-#         self.in_conv_dim = config.conv_dim[layer_id - 1] if layer_id > 0 else 1
-#         self.out_conv_dim = config.conv_dim[layer_id]
-#
-#         self.conv = nn.Conv1d(
-#             self.in_conv_dim,
-#             self.out_conv_dim,
-#             kernel_size=config.conv_kernel[layer_id],
-#             stride=config.conv_stride[layer_id],
-#             bias=config.conv_bias,
-#         )
-#         self.layer_norm = nn.LayerNorm(self.out_conv_dim, elementwise_affine=True)
-#         self.activation = ACT2FN[config.feat_extract_activation]
-#
-#     def forward(self, hidden_states):
-#         hidden_states = self.conv(hidden_states)
-#
-#         hidden_states = hidden_states.transpose(-2, -1)
-#         hidden_states = self.layer_norm(hidden_states)
-#         hidden_states = hidden_states.transpose(-2, -1)
-#
-#         hidden_states = self.activation(hidden_states)
-#         return hidden_states
 
 class Wav2Vec2LayerNormConvLayer(nn.Module):
     def __init__(self, config, layer_id=0):
@@ -394,21 +386,42 @@ class Wav2Vec2GroupNormConvLayer(nn.Module):
         self.in_conv_dim = config.conv_dim[layer_id - 1] if layer_id > 0 else 1
         self.out_conv_dim = config.conv_dim[layer_id]
 
-        self.conv = nn.Conv1d(
+        self.conv1 = nn.Conv1d(
             self.in_conv_dim,
             self.out_conv_dim,
             kernel_size=config.conv_kernel[layer_id],
             stride=config.conv_stride[layer_id],
             bias=config.conv_bias,
         )
-        self.activation = ACT2FN[config.feat_extract_activation]
+        self.conv2 = nn.Conv1d(
+            self.in_conv_dim,
+            self.out_conv_dim,
+            kernel_size=config.conv_kernel[layer_id],
+            stride=config.conv_stride[layer_id],
+            bias=config.conv_bias,
+        )
+        self.activation1 = ACT2FN[config.feat_extract_activation]
+        self.activation2 = ACT2FN[config.feat_extract_activation]
 
-        self.layer_norm = nn.GroupNorm(num_groups=self.out_conv_dim, num_channels=self.out_conv_dim, affine=True)
+        self.layer_norm1 = nn.GroupNorm(num_groups=self.out_conv_dim, num_channels=self.out_conv_dim, affine=True)
+        self.layer_norm2 = nn.GroupNorm(num_groups=self.out_conv_dim, num_channels=self.out_conv_dim, affine=True)
 
     def forward(self, hidden_states):
-        hidden_states = self.conv(hidden_states)
-        hidden_states = self.layer_norm(hidden_states)
-        hidden_states = self.activation(hidden_states)
+        hidden_states1 = hidden_states[:, 0, :]
+        if (len(hidden_states1.shape) == 2):
+            hidden_states1 = hidden_states1.unsqueeze(dim=1)
+        hidden_states1 = self.conv1(hidden_states1)
+        hidden_states1 = self.layer_norm1(hidden_states1)
+        hidden_states1 = self.activation1(hidden_states1)
+
+        hidden_states2 = hidden_states[:, 1, :]
+        if (len(hidden_states2.shape) == 2):
+            hidden_states2 = hidden_states2.unsqueeze(dim=1)
+        hidden_states2 = self.conv2(hidden_states2)
+        hidden_states2 = self.layer_norm2(hidden_states2)
+        hidden_states2 = self.activation2(hidden_states2)
+
+        hidden_states = torch.cat((hidden_states1.unsqueeze(dim=1), hidden_states2.unsqueeze(dim=1)), dim=1)
         return hidden_states
 
 
@@ -858,6 +871,9 @@ class Wav2Vec2Attention(nn.Module):
         self.q_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
         self.out_proj = nn.Linear(embed_dim, embed_dim, bias=bias)
 
+        self.other_L_scaleup = nn.Linear(embed_dim, embed_dim)
+        # self.other_C_scaleup = nn.Conv1d(1499, 1499, 1)
+
         self.limu_cfg = limu_cfg
         if limu_cfg is not None:
             self.limu_L_scaleup = nn.Linear(limu_cfg.hidden, embed_dim)
@@ -892,12 +908,19 @@ class Wav2Vec2Attention(nn.Module):
                 limu_states = self.limu_L_scaleup(key_value_states[1])
                 limu_states = self.limu_C_scaleup(limu_states)
                 b, c, l = limu_states.shape
-                key_value_states = self.A(torch.cat((self.flatten(key_value_states[0]).unsqueeze(dim=1), self.flatten(limu_states).unsqueeze(dim=1)), dim=1))
+                other_state = key_value_states[0]
+                other_state = self.other_L_scaleup(other_state)
+                # other_state = self.other_C_scaleup(other_state)
+                key_value_states = self.A(torch.cat((self.flatten(other_state).unsqueeze(dim=1), self.flatten(limu_states).unsqueeze(dim=1)), dim=1))
                 key_value_states = key_value_states.reshape(b, c, l)
 
                 _key_states = key_value_states
                 _value_states = key_value_states
                 _query_states = hidden_states
+
+                # _key_states = torch.cat((hidden_states, key_value_states), dim=2)
+                # _value_states = torch.cat((hidden_states, key_value_states), dim=2)
+                # _query_states = torch.cat((hidden_states, key_value_states), dim=2)
             else:
                 _key_states = key_value_states[0]
                 _value_states = key_value_states[0]
@@ -1290,11 +1313,13 @@ class Wav2Vec2EncoderStableLayerNorm(nn.Module):
         self.layer_norm1 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.layer_norm2 = nn.LayerNorm(config.hidden_size, eps=config.layer_norm_eps)
         self.dropout = nn.Dropout(config.hidden_dropout)
-        self.layers = [Wav2Vec2EncoderLayerStableLayerNorm(config, cross_attention=False, limu_cfg=limu_cfg, limu_transformer=limu_transformer) for _ in range(config.num_hidden_layers)]
+        # self.layers = [Wav2Vec2EncoderLayerStableLayerNorm(config, cross_attention=False, limu_cfg=limu_cfg, limu_transformer=limu_transformer) for _ in range(config.num_hidden_layers)]
+        self.layers = [Wav2Vec2EncoderLayerStableLayerNorm(config, cross_attention=False, limu_cfg=limu_cfg,limu_transformer=limu_transformer[i]) for i in range(config.num_hidden_layers)]
         for i in range(config.num_hidden_layers):
-            if (i%4 ==1):
+            if (i%4==1):
                 # self.layers[i] = SelfDocLayer(config)
-                self.layers[i] = Wav2Vec2EncoderLayerStableLayerNorm(config, cross_attention=True, limu_cfg=limu_cfg, limu_transformer=limu_transformer)
+                # self.layers[i] = Wav2Vec2EncoderLayerStableLayerNorm(config, cross_attention=True, limu_cfg=limu_cfg, limu_transformer=limu_transformer)
+                self.layers[i] = Wav2Vec2EncoderLayerStableLayerNorm(config, cross_attention=True, limu_cfg=limu_cfg, limu_transformer=limu_transformer[i])
         self.layers = nn.ModuleList(self.layers)
         self.gradient_checkpointing = False
 
@@ -1361,10 +1386,6 @@ class Wav2Vec2EncoderStableLayerNorm(nn.Module):
                     def create_custom_forward(module):
                         def custom_forward(*inputs):
                             return module(*inputs, output_attentions)
-                            # if (24%8):
-                            #     return module(*inputs, output_attentions, cross_attention=True)
-                            # else:
-                            #     return module(*inputs, output_attentions, cross_attention=False)
 
                         return custom_forward
 
@@ -1375,14 +1396,6 @@ class Wav2Vec2EncoderStableLayerNorm(nn.Module):
                         attention_mask,
                     )
                 else:
-                    # if(24%8):
-                    #     layer_outputs = layer(
-                    #         hidden_states, attention_mask=attention_mask, output_attentions=output_attentions, cross_attention=True
-                    #     )
-                    # else:
-                    #     layer_outputs = layer(
-                    #         hidden_states, attention_mask=attention_mask, output_attentions=output_attentions, cross_attention=False
-                    #     )
                     layer_outputs = layer(
                         hidden_states, limu_hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
                     )
@@ -1417,6 +1430,193 @@ class Wav2Vec2EncoderStableLayerNorm(nn.Module):
                 attentions=all_self_attentions,
             )
 
+class Wav2Vec2FeedForwardCrossAttnBaseline(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.intermediate_dropout = nn.Dropout(config.activation_dropout)
+
+        self.intermediate_dense = nn.Linear(config.hidden_size*2, config.intermediate_size*2)
+        if isinstance(config.hidden_act, str):
+            self.intermediate_act_fn = ACT2FN[config.hidden_act]
+        else:
+            self.intermediate_act_fn = config.hidden_act
+
+        self.output_dense = nn.Linear(config.intermediate_size*2, config.hidden_size*2)
+        self.output_dropout = nn.Dropout(config.hidden_dropout)
+
+    def forward(self, hidden_states):
+        hidden_states = self.intermediate_dense(hidden_states)
+        hidden_states = self.intermediate_act_fn(hidden_states)
+        hidden_states = self.intermediate_dropout(hidden_states)
+
+        hidden_states = self.output_dense(hidden_states)
+        hidden_states = self.output_dropout(hidden_states)
+        return hidden_states
+class Wav2Vec2EncoderLayerCrossAttnBaseline(nn.Module):
+    def __init__(self, config):
+        super().__init__()
+        self.config = config
+        self.attention = Wav2Vec2Attention(
+            embed_dim=config.hidden_size*2,
+            num_heads=config.num_attention_heads,
+            dropout=config.attention_dropout,
+            is_decoder=False,
+        )
+        self.dropout = nn.Dropout(config.hidden_dropout)
+        self.layer_norm = nn.LayerNorm(config.hidden_size*2, eps=config.layer_norm_eps)
+        self.feed_forward = Wav2Vec2FeedForwardCrossAttnBaseline(config)
+        self.final_layer_norm = nn.LayerNorm(config.hidden_size*2, eps=config.layer_norm_eps)
+
+
+    def forward(
+        self,
+        hidden_states: torch.Tensor,
+        attention_mask: Optional[torch.Tensor] = None,
+        output_attentions: bool = False,
+    ):
+
+        attn_residual = hidden_states
+        hidden_states = self.layer_norm(hidden_states)
+
+        hidden_states, attn_weights, _ = self.attention(
+            hidden_states, attention_mask=attention_mask, output_attentions=output_attentions, mode='self'
+        )
+
+        hidden_states = self.dropout(hidden_states)
+        hidden_states = attn_residual + hidden_states
+        hidden_states = hidden_states + self.feed_forward(self.final_layer_norm(hidden_states))
+
+
+        outputs = (hidden_states, )
+
+        if output_attentions:
+            outputs += (attn_weights,)
+
+        return outputs
+class Wav2Vec2EncoderCrossAttnBaseline(nn.Module):
+    def __init__(self, config, limu_cfg=None, limu_transformer=None):
+        super().__init__()
+        self.config = config
+        self.pos_conv_embed1 = Wav2Vec2PositionalConvEmbedding(config)
+        self.pos_conv_embed2 = Wav2Vec2PositionalConvEmbedding(config)
+        self.layer_norm = nn.LayerNorm(config.hidden_size*2, eps=config.layer_norm_eps)
+        self.dropout = nn.Dropout(config.hidden_dropout)
+        self.layers = [Wav2Vec2EncoderLayerCrossAttnBaseline(config, ) for _ in range(config.num_hidden_layers)]
+
+        self.layers = nn.ModuleList(self.layers)
+        self.gradient_checkpointing = False
+
+
+        self.other_L_scaleup = nn.Linear(config.hidden_size, config.hidden_size)
+        # self.other_C_scaleup = nn.Conv1d(1499, 1499, 1)
+        self.limu_cfg = limu_cfg
+        if limu_cfg is not None:
+            self.limu_L_scaleup = nn.Linear(limu_cfg.hidden, config.hidden_size)
+            self.limu_C_scaleup = nn.Conv1d(120, 1499, 1)
+            self.A = nn.Conv1d(2, 1, 1)
+            self.flatten = nn.Flatten()
+
+    def forward(
+        self,
+        hidden_states,
+        limu_hidden_states=None,
+        attention_mask=None,
+        output_attentions=False,
+        output_hidden_states=False,
+        return_dict=True,
+    ):
+        all_hidden_states = () if output_hidden_states else None
+        all_self_attentions = () if output_attentions else None
+
+        if attention_mask is not None:
+            attention_mask1 = attention_mask[:,0,:]
+            attention_mask2 = attention_mask[:,1,:]
+            # make sure padded tokens are not attended to
+            expand_attention_mask1 = attention_mask1.unsqueeze(-1).repeat(1, 1, hidden_states.shape[3])
+            expand_attention_mask2 = attention_mask2.unsqueeze(-1).repeat(1, 1, hidden_states.shape[3])
+            hidden_states[:,0,:,:][~expand_attention_mask1] = 0
+            hidden_states[:,1,:,:][~expand_attention_mask2] = 0
+
+            # extend attention_mask
+            attention_mask1 = 1.0 - attention_mask1[:, None, None, :].to(dtype=hidden_states.dtype)
+            attention_mask1 = attention_mask1 * torch.finfo(hidden_states.dtype).min
+            attention_mask1 = attention_mask1.expand(
+                attention_mask1.shape[0], 1, attention_mask1.shape[-1], attention_mask1.shape[-1]
+            )
+            attention_mask2 = 1.0 - attention_mask2[:, None, None, :].to(dtype=hidden_states.dtype)
+            attention_mask2 = attention_mask2 * torch.finfo(hidden_states.dtype).min
+            attention_mask2 = attention_mask2.expand(
+                attention_mask2.shape[0], 1, attention_mask2.shape[-1], attention_mask2.shape[-1]
+            )
+            attention_mask = torch.cat((attention_mask1.unsqueeze(dim=1), attention_mask2.unsqueeze(dim=1)), dim=1)
+            attention_mask = attention_mask[:, 0, :, :, :]
+
+        hidden_states1 = hidden_states[:,0,:,:]
+        hidden_states2 = hidden_states[:,1,:,:]
+
+        limu_states = self.limu_L_scaleup(limu_hidden_states)
+        limu_states = self.limu_C_scaleup(limu_states)
+        b, c, l = limu_states.shape
+        other_state = self.other_L_scaleup(hidden_states2)
+        key_value_states = self.A(
+            torch.cat((self.flatten(other_state).unsqueeze(dim=1), self.flatten(limu_states).unsqueeze(dim=1)), dim=1))
+        key_value_states = key_value_states.reshape(b, c, l)
+
+
+        hidden_states = torch.cat((hidden_states1, key_value_states), dim=2)
+
+        deepspeed_zero3_is_enabled = is_deepspeed_zero3_enabled()
+
+        for i, layer in enumerate(self.layers):
+            if output_hidden_states:
+                all_hidden_states = all_hidden_states + (hidden_states,)
+
+            # add LayerDrop (see https://arxiv.org/abs/1909.11556 for description)
+            dropout_probability = np.random.uniform(0, 1)
+
+            skip_the_layer = True if self.training and (dropout_probability < self.config.layerdrop) else False
+            if not skip_the_layer or deepspeed_zero3_is_enabled:
+                # under deepspeed zero3 all gpus must run in sync
+                # XXX: could optimize this like synced_gpus in generate_utils but not sure if it's worth the code complication
+                if self.gradient_checkpointing and self.training:
+                    # create gradient checkpointing function
+                    def create_custom_forward(module):
+                        def custom_forward(*inputs):
+                            return module(*inputs, output_attentions)
+
+                        return custom_forward
+
+                    layer_outputs = torch.utils.checkpoint.checkpoint(
+                        create_custom_forward(layer),
+                        hidden_states,
+                        attention_mask,
+                    )
+                else:
+                    layer_outputs = layer(
+                        hidden_states, attention_mask=attention_mask, output_attentions=output_attentions
+                    )
+                hidden_states = layer_outputs[0]
+
+            if skip_the_layer:
+                layer_outputs = (None, None)
+
+            if output_attentions:
+                all_self_attentions = all_self_attentions + (layer_outputs[1],)
+
+        hidden_states = self.layer_norm(hidden_states)
+
+        if output_hidden_states:
+            all_hidden_states = all_hidden_states + (hidden_states,)
+
+        if not return_dict:
+            return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
+
+        else:
+            return BaseModelOutput(
+                last_hidden_state=(hidden_states, None),
+                hidden_states=all_hidden_states,
+                attentions=all_self_attentions,
+            )
 
 class Wav2Vec2GumbelVectorQuantizer(nn.Module):
     """
@@ -1727,10 +1927,18 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         # ---------------------LIMU-BERT----------------------------
         if config.mode == 'triple':
-            self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v3')
-            self.limu = LIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
+            self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v4')
+            self.limu = LBLIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
             self.limu.load_state_dict(torch.load(config.limu_pretrained_model, map_location=self.device))
         # ---------------------LIMU_BERT----------------------------
+
+        # self.tmp_limu = LIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
+        # self.limu.transformer.attn.load_state_dict(self.tmp_limu.transformer.attn.state_dict())
+        # self.limu.transformer.proj.load_state_dict(self.tmp_limu.transformer.proj.state_dict())
+        # self.limu.transformer.norm1.load_state_dict(self.tmp_limu.transformer.norm1.state_dict())
+        # self.limu.transformer.pwff.load_state_dict(self.tmp_limu.transformer.pwff.state_dict())
+        # self.limu.transformer.norm2.load_state_dict(self.tmp_limu.transformer.norm2.state_dict())
+        # del(self.tmp_limu)
 
         self.config = config
         self.feature_extractor = Wav2Vec2FeatureEncoder(config)
@@ -1744,7 +1952,11 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         if config.do_stable_layer_norm:
             if config.mode == 'triple':
-                self.encoder = Wav2Vec2EncoderStableLayerNorm(config, self.limu_cfg, self.limu.transformer)
+                # for limu with repeating attention layers
+                # self.encoder = Wav2Vec2EncoderStableLayerNorm(config, self.limu_cfg, self.limu.transformer)
+                # for limu with 12 seperate attention layers
+                self.encoder = Wav2Vec2EncoderStableLayerNorm(config, self.limu_cfg, self.limu.layers)
+                # self.encoder = Wav2Vec2EncoderCrossAttnBaseline(config, self.limu_cfg, self.limu.transformer)
             else:
                 self.encoder = Wav2Vec2EncoderStableLayerNorm(config)
         else:
@@ -1875,7 +2087,8 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
         if self.config.mode == 'triple':
             imu_data = input_values[:,6,:3600]
             imu_data = imu_data.reshape(imu_data.shape[0], -1, 120, 6)
-            hidden_states_limu = self.limu.transformer.embed(imu_data.mean(dim=1))
+            # hidden_states_limu = self.limu.transformer.embed(imu_data.mean(dim=1))
+            hidden_states_limu = self.limu.embed(imu_data.mean(dim=1))
         encoder_outputs = self.encoder(
             torch.cat((hidden_states1.unsqueeze(dim=1), hidden_states2.unsqueeze(dim=1)), dim=1),
             hidden_states_limu,
@@ -1887,6 +2100,12 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         hidden_states = encoder_outputs.last_hidden_state[0]
         limu_hidden_states = encoder_outputs.last_hidden_state[1]
+        
+        # for early fusion
+        #########################
+        # hidden_states = torch.cat((hidden_states1.unsqueeze(dim=1), hidden_states2.unsqueeze(dim=1)), dim=1)
+        # limu_hidden_states = hidden_states_limu
+        #########################
 
         if self.adapter is not None:
             hidden_states = self.adapter(hidden_states)

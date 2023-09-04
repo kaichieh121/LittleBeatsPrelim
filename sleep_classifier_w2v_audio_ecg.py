@@ -38,8 +38,8 @@ def get_arguments():
     parser.add_argument('--ckpt_path', default='/home/kcchang3/data/LittleBeats/manifest/wav2vec2-xlsr-english-speech-sleep-recognition/checkpoint-300')
     parser.add_argument('--cache_path', default='~/.cache/huggingface/datasets')
     parser.add_argument('--embedding_type', default='uci')
-    parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\limu_bert\\saved\\pretrain_base_littlebeats_20_120\\limu_v3.pt")
-    parser.add_argument('--mode', choices=['mono', 'stereo', 'stereo+limu', 'triple'])
+    parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\limu\\limu_v3.pt")
+    parser.add_argument('--mode')
     args = parser.parse_args()
     return args
 
@@ -66,13 +66,11 @@ def down_sample(data, window_sample, start, end):
             if remainder >= 1:
                 remainder -= 1
                 slice = data[i: i + window + 1, :]
-                # print('i: %d, window: %d, start: %d, end: %d' % (i, window, start, end))
                 result.append(np.mean(slice, 0))
                 i += window + 1
             else:
                 slice = data[i: i + window, :]
                 result.append(np.mean(slice, 0))
-                # print('i: %d, window: %d, start: %d, end: %d' % (i, window +  1, start, end))
                 i += window
     return np.array(result)
 
@@ -151,7 +149,6 @@ if __name__ == '__main__':
         label2id={label: i for i, label in enumerate(label_list)},
         id2label={i: label for i, label in enumerate(label_list)},
         finetuning_task="wav2vec2_clf",
-        num_hidden_layers=12
     )
     setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
     setattr(config, 'pooling_mode', pooling_mode)
@@ -160,13 +157,17 @@ if __name__ == '__main__':
     target_sampling_rate = processor.feature_extractor.sampling_rate
 
     lb_audio_pretrained_weights = torch.load(manifest_dir / 'pretrained_weights' / 'lb_lena_4300hr.pt')
-
+    bp_ecg_pretrained_weights = torch.load(manifest_dir / 'pretrained_weights' / 'bp_ecg_500hr.pt')
 
     if(args.train or args.train_from_ckpt):
         if (args.train_from_ckpt):
             print(f"Training from ckpt {args.ckpt_path}")
             model_name_or_path = args.ckpt_path
-            model = AllModalityModel.from_pretrained(model_name_or_path, embedding_type=embedding_dict[embedding_type])
+            model = create_model(config=config,
+                                 embedding_type=embedding_dict[embedding_type],
+                                 model_name_or_path=model_name_or_path,
+                                 lb_audio_pretrained_weights=lb_audio_pretrained_weights,
+                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
             model.load_state_dict(torch.load(Path(model_name_or_path) / "pytorch_model.bin"))
         else:
             print("Training from scratch")
@@ -175,7 +176,8 @@ if __name__ == '__main__':
             model = create_model(config=config,
                                  embedding_type=embedding_dict[embedding_type],
                                  model_name_or_path=model_name_or_path,
-                                 lb_audio_pretrained_weights=lb_audio_pretrained_weights)
+                                 lb_audio_pretrained_weights=lb_audio_pretrained_weights,
+                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
 
 
         model.freeze_feature_extractor()
@@ -274,7 +276,8 @@ if __name__ == '__main__':
     if(args.eval):
         model_name_or_path = args.ckpt_path
         config = AutoConfig.from_pretrained(model_name_or_path)
-        model = create_model(config=config, embedding_type=embedding_dict[embedding_type], model_name_or_path=model_name_or_path, lb_audio_pretrained_weights=lb_audio_pretrained_weights)
+        model = create_model(config=config, embedding_type=embedding_dict[embedding_type], model_name_or_path=model_name_or_path, lb_audio_pretrained_weights=lb_audio_pretrained_weights,
+                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
         model = model.to(device)
         # model = AllModalityModel.from_pretrained(model_name_or_path, mode=embedding_dict[embedding_type]).to(device)
         model.load_state_dict(torch.load(Path(model_name_or_path) / "pytorch_model.bin"))
