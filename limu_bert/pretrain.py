@@ -15,9 +15,9 @@ import copy
 from torch.utils.data import Dataset, TensorDataset, DataLoader
 from torch.utils.tensorboard import SummaryWriter
 
-import models, train
+import limu_models, train
 from config import MaskConfig, TrainConfig, PretrainModelConfig
-from models import LIMUBertModel4Pretrain, LBLIMUBertModel4Pretrain
+from limu_models import LIMUBertModel4Pretrain, LBLIMUBertModel4Pretrain
 from utils import set_seeds, get_device \
     , LIBERTDataset4Pretrain, handle_argv, load_pretrain_data_config, prepare_classifier_dataset, \
     prepare_pretrain_dataset, Preprocess4Normalization,  Preprocess4Mask

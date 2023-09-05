@@ -1,5 +1,5 @@
 {
-  "_name_or_path": "jonatasgrosman/wav2vec2-large-xlsr-53-english",
+  "_name_or_path": "D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights",
   "activation_dropout": 0.05,
   "adapter_kernel_size": 3,
   "adapter_stride": 2,
@@ -94,6 +94,7 @@
   "num_negatives": 100,
   "output_hidden_size": 768,
   "pad_token_id": 0,
+  "pooling_mode": "mean",
   "problem_type": "single_label_classification",
   "proj_codevector_dim": 256,
   "tdnn_dilation": [
