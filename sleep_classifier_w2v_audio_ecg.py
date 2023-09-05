@@ -4,13 +4,9 @@ import time
 import argparse
 from pathlib import Path
 import torch, torchaudio
-from torch.utils.data import DataLoader
-import torch.nn.functional as F
 import warnings
 import pandas as pd
-from datetime import datetime
-from dataloader import LittleBeatsDataset
-from transformers import AutoConfig, Wav2Vec2Processor
+from transformers import AutoConfig, Wav2Vec2Processor, Wav2Vec2FeatureExtractor, PreTrainedTokenizer
 from LittleBeatsPrelim.wav2vec_scripts.datacollector import DataCollatorCTCWithPadding
 # from LittleBeatsPrelim.wav2vec_scripts.wav2vec_audio_ecg_model import AllModalityModel, OneModalityModel
 from LittleBeatsPrelim.wav2vec_scripts.wav2vec2_stereo_model import AllModalityModel, create_model
@@ -37,7 +33,9 @@ def get_arguments():
     parser.add_argument('--eval', action='store_true')
     parser.add_argument('--ckpt_path', default='/home/kcchang3/data/LittleBeats/manifest/wav2vec2-xlsr-english-speech-sleep-recognition/checkpoint-300')
     parser.add_argument('--cache_path', default='~/.cache/huggingface/datasets')
-    parser.add_argument('--embedding_type', default='uci')
+    parser.add_argument('--embedding_type', default='audio')
+    parser.add_argument('--audio_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\lb_lena_4300hr.pt")
+    parser.add_argument('--ecg_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\bp_ecg_500hr.pt")
     parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\limu\\limu_v3.pt")
     parser.add_argument('--mode')
     args = parser.parse_args()
@@ -104,7 +102,7 @@ if __name__ == '__main__':
     best_model_dir = output_dir / "checkpoint-best"
 
     embedding_type = args.embedding_type
-    embedding_dict = {'audio': 0, 'ecg': 1, 'uci': 2, 'hhar': 3, 'motion': 4, 'shoaib': 5}
+    embedding_dict = {'audio': 0, 'ecg': 1}
 
 
     device = "cuda" if torch.cuda.is_available() else "cpu"
@@ -135,12 +133,8 @@ if __name__ == '__main__':
     num_labels = len(label_list)
     print(f"A classification problem with {num_labels} classes: {label_list}")
 
-
-
     # Model specific setup
-    huggingface_path = "jonatasgrosman/wav2vec2-large-xlsr-53-english"
     model_name_or_path = manifest_dir / 'pretrained_weights'
-    pooling_mode = "mean"
     label_list = ['wake', 'sleep']
     # config
     config = AutoConfig.from_pretrained(
@@ -151,13 +145,45 @@ if __name__ == '__main__':
         finetuning_task="wav2vec2_clf",
     )
     setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
-    setattr(config, 'pooling_mode', pooling_mode)
     setattr(config, 'mode', args.mode)
-    processor = Wav2Vec2Processor.from_pretrained(huggingface_path, )
-    target_sampling_rate = processor.feature_extractor.sampling_rate
+    # processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", )
+    processor = Wav2Vec2Processor(Wav2Vec2FeatureExtractor(return_attention_mask=True), PreTrainedTokenizer())
+    target_sampling_rate = 16000
 
-    lb_audio_pretrained_weights = torch.load(manifest_dir / 'pretrained_weights' / 'lb_lena_4300hr.pt')
-    bp_ecg_pretrained_weights = torch.load(manifest_dir / 'pretrained_weights' / 'bp_ecg_500hr.pt')
+    lb_audio_pretrained_weights = torch.load(args.audio_pretrained_model)
+    bp_ecg_pretrained_weights = torch.load(args.ecg_pretrained_model)
+
+
+    def preprocess_function(examples, processor=processor, label_list=label_list,
+                            output_column=output_column, target_sampling_rate=target_sampling_rate):
+        def speech_file_to_array_fn(path, target_sampling_rate=target_sampling_rate):
+            speech_array, sampling_rate = torchaudio.load(path)
+            resampler = torchaudio.transforms.Resample(sampling_rate, target_sampling_rate)
+            speech = resampler(speech_array).squeeze().numpy()
+            return speech
+
+        def imu_to_limu_format(path, raw_sr=150, target_sr=20):
+            pd_file = pd.read_csv(path.__str__(), sep=' ', header=None)
+            tmp_data = torch.tensor(pd_file.values)
+            tmp_data = down_sample(tmp_data, raw_sr / target_sr, 0, tmp_data.shape[0] - 1)
+            tmp_data = np.concatenate((tmp_data, np.expand_dims(tmp_data[-1], 0)), 0)[:, :6]
+            tmp_data = tmp_data.reshape(tmp_data.shape[0] * tmp_data.shape[1])
+            return tmp_data
+
+        speech_list = [speech_file_to_array_fn(path) for path in examples['audio_path']]
+        ecg_list = [speech_file_to_array_fn(path) for path in examples['ecg_path']]
+        limu_list = [imu_to_limu_format(path) for path in examples['imu_path']]
+
+        audio_list = []
+        for i in range(len(speech_list)):
+            audio_list.append(np.concatenate((np.expand_dims(speech_list[i], axis=0), \
+                                              np.expand_dims(ecg_list[i], axis=0), \
+                                              np.expand_dims(np.concatenate((limu_list[i], np.zeros(
+                                                  speech_list[0].shape[0] - limu_list[0].shape[0]))), axis=0)), axis=0))
+        target_list = [label_to_id(label, label_list) for label in examples[output_column]]
+        result = processor(audio_list, sampling_rate=target_sampling_rate)
+        result["labels"] = list(target_list)
+        return result
 
     if(args.train or args.train_from_ckpt):
         if (args.train_from_ckpt):
@@ -165,61 +191,17 @@ if __name__ == '__main__':
             model_name_or_path = args.ckpt_path
             model = create_model(config=config,
                                  embedding_type=embedding_dict[embedding_type],
-                                 model_name_or_path=model_name_or_path,
                                  lb_audio_pretrained_weights=lb_audio_pretrained_weights,
                                  bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
             model.load_state_dict(torch.load(Path(model_name_or_path) / "pytorch_model.bin"))
         else:
             print("Training from scratch")
-            model_name_or_path = "jonatasgrosman/wav2vec2-large-xlsr-53-english"
-
             model = create_model(config=config,
                                  embedding_type=embedding_dict[embedding_type],
-                                 model_name_or_path=model_name_or_path,
                                  lb_audio_pretrained_weights=lb_audio_pretrained_weights,
                                  bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
 
-
         model.freeze_feature_extractor()
-
-        def preprocess_function(examples, processor=processor, label_list=label_list,
-                                output_column=output_column, target_sampling_rate=target_sampling_rate):
-            def speech_file_to_array_fn(path, target_sampling_rate=target_sampling_rate):
-                speech_array, sampling_rate = torchaudio.load(path)
-                resampler = torchaudio.transforms.Resample(sampling_rate, target_sampling_rate)
-                speech = resampler(speech_array).squeeze().numpy()
-                return speech
-            def imu_to_limu_format(path, raw_sr=150, target_sr=20):
-                pd_file = pd.read_csv(path.__str__(), sep=' ', header=None)
-                tmp_data = torch.tensor(pd_file.values)
-                tmp_data = down_sample(tmp_data, raw_sr / target_sr, 0, tmp_data.shape[0] - 1)
-                tmp_data = np.concatenate((tmp_data, np.expand_dims(tmp_data[-1], 0)), 0)[:,:6]
-                tmp_data = tmp_data.reshape(tmp_data.shape[0]*tmp_data.shape[1])
-                return tmp_data
-            speech_list = [speech_file_to_array_fn(path) for path in examples['audio_path']]
-            limu_list = [imu_to_limu_format(path) for path in examples['imu_path']]
-            ecg_list = [speech_file_to_array_fn(path) for path in examples['ecg_path']]
-            uci_list = [np.load(path) for path in examples['uci_path']]
-            hhar_list = [np.load(path) for path in examples['hhar_path']]
-            motion_list = [np.load(path) for path in examples['motion_path']]
-            shoaib_list = [np.load(path) for path in examples['shoaib_path']]
-
-
-            audio_list = []
-            for i in range(len(speech_list)):
-                audio_list.append(np.concatenate((np.expand_dims(speech_list[i], axis=0), \
-                                                  np.expand_dims(ecg_list[i], axis=0), \
-                                                  np.expand_dims(np.concatenate((uci_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0),
-                                                  np.expand_dims(np.concatenate((hhar_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0), \
-                                                  np.expand_dims(np.concatenate((motion_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0), \
-                                                  np.expand_dims(np.concatenate((shoaib_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0), \
-                                                  np.expand_dims(np.concatenate((limu_list[i], np.zeros(speech_list[0].shape[0] - limu_list[0].shape[0]))), axis=0)),axis=0))
-            target_list = [label_to_id(label, label_list) for label in examples[output_column]]
-            result = processor(audio_list, sampling_rate=target_sampling_rate)
-
-            result["labels"] = list(target_list)
-            return result
-
 
         train_dataset = train_dataset.map(
             preprocess_function,
@@ -268,57 +250,17 @@ if __name__ == '__main__':
         trainer.train()
         trainer.save_model(best_model_dir)
 
-
-
     '''
         Evaluation
     '''
     if(args.eval):
         model_name_or_path = args.ckpt_path
         config = AutoConfig.from_pretrained(model_name_or_path)
-        model = create_model(config=config, embedding_type=embedding_dict[embedding_type], model_name_or_path=model_name_or_path, lb_audio_pretrained_weights=lb_audio_pretrained_weights,
+        model = create_model(config=config, embedding_type=embedding_dict[embedding_type], lb_audio_pretrained_weights=lb_audio_pretrained_weights,
                                  bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
         model = model.to(device)
-        # model = AllModalityModel.from_pretrained(model_name_or_path, mode=embedding_dict[embedding_type]).to(device)
         model.load_state_dict(torch.load(Path(model_name_or_path) / "pytorch_model.bin"))
 
-        def preprocess_function(examples, processor=processor, label_list=label_list,
-                                output_column=output_column, target_sampling_rate=target_sampling_rate):
-            def speech_file_to_array_fn(path, target_sampling_rate=target_sampling_rate):
-                speech_array, sampling_rate = torchaudio.load(path)
-                resampler = torchaudio.transforms.Resample(sampling_rate, target_sampling_rate)
-                speech = resampler(speech_array).squeeze().numpy()
-                return speech
-            def imu_to_limu_format(path, raw_sr=150, target_sr=20):
-                pd_file = pd.read_csv(path.__str__(), sep=' ', header=None)
-                tmp_data = torch.tensor(pd_file.values)
-                tmp_data = down_sample(tmp_data, raw_sr / target_sr, 0, tmp_data.shape[0] - 1)
-                tmp_data = np.concatenate((tmp_data, np.expand_dims(tmp_data[-1], 0)), 0)[:,:6]
-                tmp_data = tmp_data.reshape(tmp_data.shape[0]*tmp_data.shape[1])
-                return tmp_data
-            speech_list = [speech_file_to_array_fn(path) for path in examples['audio_path']]
-            ecg_list = [speech_file_to_array_fn(path) for path in examples['ecg_path']]
-            uci_list = [np.load(path) for path in examples['uci_path']]
-            hhar_list = [np.load(path) for path in examples['hhar_path']]
-            motion_list = [np.load(path) for path in examples['motion_path']]
-            shoaib_list = [np.load(path) for path in examples['shoaib_path']]
-            limu_list = [imu_to_limu_format(path) for path in examples['imu_path']]
-
-
-            audio_list = []
-            for i in range(len(speech_list)):
-                audio_list.append(np.concatenate((np.expand_dims(speech_list[i], axis=0), \
-                                                  np.expand_dims(ecg_list[i], axis=0), \
-                                                  np.expand_dims(np.concatenate((uci_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0),
-                                                  np.expand_dims(np.concatenate((hhar_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0), \
-                                                  np.expand_dims(np.concatenate((motion_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0), \
-                                                  np.expand_dims(np.concatenate((shoaib_list[i], np.zeros(speech_list[0].shape[0] - uci_list[0].shape[0]))), axis=0), \
-                                                  np.expand_dims(np.concatenate((limu_list[i], np.zeros(speech_list[0].shape[0] - limu_list[0].shape[0]))), axis=0)),axis=0))
-            target_list = [label_to_id(label, label_list) for label in examples[output_column]]
-            result = processor(audio_list, sampling_rate=target_sampling_rate)
-
-            result["labels"] = list(target_list)
-            return result
         def predict(batch, processor=processor):
             features = processor(batch["input_values"], sampling_rate=processor.feature_extractor.sampling_rate,
                                  return_tensors="pt", padding=True)
@@ -343,12 +285,3 @@ if __name__ == '__main__':
         print(classification_report(y_true, y_pred, target_names=label_names))
         conf_matrix, accuracy, f1, kappa = evaluate_classifier(torch.tensor(y_pred), torch.tensor(y_true))
         print(conf_matrix, accuracy, f1, kappa)
-
-        # train_dataset = train_dataset.map(speech_file_to_array_fn)
-        # result = train_dataset.map(predict, batched=True, batch_size=8)
-        # label_names = [config.id2label[i] for i in range(config.num_labels)]
-        # y_true = [config.label2id[name] for name in result["class"]]
-        # y_pred = result["predicted"]
-        # print(classification_report(y_true, y_pred, target_names=label_names))
-        # conf_matrix, accuracy, f1, kappa = evaluate_classifier(torch.tensor(y_pred), torch.tensor(y_true))
-        # print(conf_matrix, accuracy, f1, kappa)

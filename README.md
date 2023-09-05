@@ -72,7 +72,7 @@ This code is tested on Windows 11 with Python 3.9, CUDA 11.6 and Pytorch 1.13
 sleep_classifier_w2v_audio_ecg.py 
 --train or --train_from_ckpt
 --ckpt_path
-"D:\Projects\LittleBeatsPrelim_HAL\LittleBeatsPrelim\manifest\w2v-audio-and-ecg\checkpoint-best"
+"path to checkpoint directory"
 --cache_path
 "D:\Projects\datasets\.cache\huggingface\datasets"
 --embedding_type
@@ -92,7 +92,7 @@ sleep_classifier_w2v_audio_ecg.py
 sleep_classifier_w2v_audio_ecg.py 
 --eval
 --ckpt_path
-"D:\Projects\LittleBeatsPrelim_HAL\LittleBeatsPrelim\manifest\w2v-audio-and-ecg\checkpoint-best"
+"path to checkpoint directory"
 --cache_path
 "D:\Projects\datasets\.cache\huggingface\datasets"
 --embedding_type
@@ -108,5 +108,5 @@ sleep_classifier_w2v_audio_ecg.py
 ```
 
 ## Official Checkpoint
-1. Download [checkpoint](https://drive.google.com/drive/folders/1eJdDlmnyKIs-Fxs1IZZXYdb8AzfRt4t1?usp=drive_link) directory
+1. Download [checkpoint](https://drive.google.com/drive/folders/1jWmoQnGA1KASlIPCft76YFpGLRGm3WCv?usp=drive_link) directory
 2. Run evaluation using the downloaded path as --ckpt_path

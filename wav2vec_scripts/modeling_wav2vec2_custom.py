@@ -2085,7 +2085,7 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         hidden_states_limu = None
         if self.config.mode == 'triple':
-            imu_data = input_values[:,6,:3600]
+            imu_data = input_values[:,2,:3600]
             imu_data = imu_data.reshape(imu_data.shape[0], -1, 120, 6)
             # hidden_states_limu = self.limu.transformer.embed(imu_data.mean(dim=1))
             hidden_states_limu = self.limu.embed(imu_data.mean(dim=1))

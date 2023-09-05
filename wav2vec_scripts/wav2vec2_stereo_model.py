@@ -1,8 +1,4 @@
-import copy
-
 import torch
-import math
-import torch.nn as nn
 from torch.nn import BCEWithLogitsLoss, CrossEntropyLoss, MSELoss
 from dataclasses import dataclass
 from typing import Optional, Tuple
@@ -29,7 +25,7 @@ class SpeechClassifierOutput(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
-def create_model(config, embedding_type, model_name_or_path, lb_audio_pretrained_weights, bp_ecg_pretrained_weights):
+def create_model(config, embedding_type, lb_audio_pretrained_weights, bp_ecg_pretrained_weights):
     mode = config.mode
     if mode == 'mono':
         model = OneModalityModel(config=config, mode=embedding_type)
@@ -39,7 +35,7 @@ def create_model(config, embedding_type, model_name_or_path, lb_audio_pretrained
             model = load_fairseq_weights(model, 'wav2vec2', bp_ecg_pretrained_weights['model'], config)
         # model = OneModalityModel.from_pretrained(model_name_or_path, config=config, mode=embedding_type)
     elif mode == 'stereo':
-        model = TwoModalityModel.from_pretrained(model_name_or_path, config=config)
+        model = TwoModalityModel.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", config=config)
         # model = TwoModalityModel(config)
     elif mode == 'triple' or mode == 'stereo+limu':
         model = AllModalityModel(config=config, embedding_type=embedding_type)
