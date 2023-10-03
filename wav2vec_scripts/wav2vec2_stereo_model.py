@@ -7,6 +7,7 @@ from LittleBeatsPrelim.wav2vec_scripts.load_w2v_from_fairseq_weights import load
 
 from .modeling_wav2vec2_custom import Wav2Vec2PreTrainedModel as Wav2Vec2PreTrainedModel_custom
 from .modeling_wav2vec2_custom import Wav2Vec2Model as Wav2Vec2Model_custom
+from .modeling_wav2vec2_custom import Wav2Vec2ForPreTraining
 
 from transformers.models.wav2vec2.modeling_wav2vec2 import (
     Wav2Vec2PreTrainedModel,
@@ -38,13 +39,54 @@ def create_model(config, embedding_type, lb_audio_pretrained_weights, bp_ecg_pre
         model = TwoModalityModel.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", config=config)
         # model = TwoModalityModel(config)
     elif mode == 'triple' or mode == 'stereo+limu':
-        model = AllModalityModel(config=config, embedding_type=embedding_type)
-        model = load_fairseq_weights(model, 'wav2vec2', lb_audio_pretrained_weights['model'], config)
-        model = load_fairseq_weights(model, 'wav2vec2_copy', bp_ecg_pretrained_weights['model'], config)
+        if config.pretrain:
+            model = AllModalityModelForPreTraining(config=config, embedding_type=embedding_type)
+        else:
+            model = AllModalityModel(config=config, embedding_type=embedding_type)
+            model = load_fairseq_weights(model, 'wav2vec2', lb_audio_pretrained_weights['model'], config)
+            model = load_fairseq_weights(model, 'wav2vec2_copy', bp_ecg_pretrained_weights['model'], config)
     elif mode == 'baseline_ecg' or mode == 'baseline_resp_ecg':
         model = BaselineModel(config=config, mode=mode, embedding_type=1)
     model.update_weights()
     return model
+
+class AllModalityModelForPreTraining(Wav2Vec2PreTrainedModel_custom):
+    def __init__(self, config, embedding_type):
+        super().__init__(config)
+        self.num_labels = config.num_labels
+        self.pooling_mode = config.pooling_mode
+        self.config = config
+        self.wav2vec2 = Wav2Vec2ForPreTraining(config)
+        self.embedding_type = embedding_type
+        self.mode = config.mode
+        self.init_weights()
+
+    def freeze_feature_extractor(self):
+        self.wav2vec2.feature_extractor._freeze_parameters()
+
+    def forward(
+            self,
+            input_values: Optional[torch.Tensor],
+            attention_mask: Optional[torch.Tensor] = None,
+            mask_time_indices: Optional[torch.BoolTensor] = None,
+            sampled_negative_indices: Optional[torch.BoolTensor] = None,
+            output_attentions: Optional[bool] = None,
+            output_hidden_states: Optional[bool] = None,
+            return_dict: Optional[bool] = None,
+    ):
+        output = self.wav2vec2(input_values=input_values,
+            attention_mask=attention_mask,
+            mask_time_indices=mask_time_indices,
+            sampled_negative_indices=sampled_negative_indices,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict)
+
+        return output
+
+    def update_weights(self):
+        pass
+
 
 
 class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
@@ -148,6 +190,7 @@ class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
         hidden_states = outputs.last_hidden_state[0]
         attentions = outputs.extract_features
         limu_hidden_states = outputs.last_hidden_state[1]
+        limu_hidden_states = self.merged_strategy(limu_hidden_states, mode=self.pooling_mode)
         hidden_states1 = self.merged_strategy(hidden_states[:, 0, :, :], mode=self.pooling_mode)
         hidden_states2 = self.merged_strategy(hidden_states[:, 1, :, :], mode=self.pooling_mode)
         # for early fusion

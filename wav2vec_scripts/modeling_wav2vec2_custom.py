@@ -1419,7 +1419,7 @@ class Wav2Vec2EncoderStableLayerNorm(nn.Module):
             return tuple(v for v in [hidden_states, all_hidden_states, all_self_attentions] if v is not None)
         if limu_hidden_states is not None:
             return BaseModelOutput(
-                last_hidden_state=(hidden_states, limu_hidden_states[:,0,:]),
+                last_hidden_state=(hidden_states, limu_hidden_states),
                 hidden_states=all_hidden_states,
                 attentions=all_self_attentions,
             )
@@ -1929,16 +1929,9 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
         if config.mode == 'triple':
             self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v4')
             self.limu = LBLIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
-            self.limu.load_state_dict(torch.load(config.limu_pretrained_model, map_location=self.device))
+            if not config.pretrain:
+                self.limu.load_state_dict(torch.load(config.limu_pretrained_model, map_location=self.device))
         # ---------------------LIMU_BERT----------------------------
-
-        # self.tmp_limu = LIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
-        # self.limu.transformer.attn.load_state_dict(self.tmp_limu.transformer.attn.state_dict())
-        # self.limu.transformer.proj.load_state_dict(self.tmp_limu.transformer.proj.state_dict())
-        # self.limu.transformer.norm1.load_state_dict(self.tmp_limu.transformer.norm1.state_dict())
-        # self.limu.transformer.pwff.load_state_dict(self.tmp_limu.transformer.pwff.state_dict())
-        # self.limu.transformer.norm2.load_state_dict(self.tmp_limu.transformer.norm2.state_dict())
-        # del(self.tmp_limu)
 
         self.config = config
         self.feature_extractor = Wav2Vec2FeatureEncoder(config)
@@ -2083,15 +2076,15 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
             hidden_states2, mask_time_indices=mask_time_indices, attention_mask=attention_mask2
         )
 
-        hidden_states_limu = None
+        extract_features_limu = None
         if self.config.mode == 'triple':
             imu_data = input_values[:,2,:3600]
             imu_data = imu_data.reshape(imu_data.shape[0], -1, 120, 6)
             # hidden_states_limu = self.limu.transformer.embed(imu_data.mean(dim=1))
-            hidden_states_limu = self.limu.embed(imu_data.mean(dim=1))
+            extract_features_limu = self.limu.embed(imu_data.mean(dim=1))
         encoder_outputs = self.encoder(
             torch.cat((hidden_states1.unsqueeze(dim=1), hidden_states2.unsqueeze(dim=1)), dim=1),
-            hidden_states_limu,
+            extract_features_limu,
             attention_mask=torch.cat((attention_mask1.unsqueeze(dim=1), attention_mask2.unsqueeze(dim=1)), dim=1),
             output_attentions=output_attentions,
             output_hidden_states=output_hidden_states,
@@ -2100,12 +2093,6 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         hidden_states = encoder_outputs.last_hidden_state[0]
         limu_hidden_states = encoder_outputs.last_hidden_state[1]
-        
-        # for early fusion
-        #########################
-        # hidden_states = torch.cat((hidden_states1.unsqueeze(dim=1), hidden_states2.unsqueeze(dim=1)), dim=1)
-        # limu_hidden_states = hidden_states_limu
-        #########################
 
         if self.adapter is not None:
             hidden_states = self.adapter(hidden_states)
@@ -2115,7 +2102,7 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         return Wav2Vec2BaseModelOutput(
             last_hidden_state=(hidden_states, limu_hidden_states),
-            extract_features=torch.cat((extract_features1.unsqueeze(dim=1), extract_features2.unsqueeze(dim=1)), dim=1),
+            extract_features=(torch.cat((extract_features1.unsqueeze(dim=1), extract_features2.unsqueeze(dim=1)), dim=1), extract_features_limu),
             hidden_states=encoder_outputs.hidden_states,
             attentions=encoder_outputs.attentions,
         )
@@ -2128,14 +2115,25 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
         self.wav2vec2 = Wav2Vec2Model(config)
         self.dropout_features = nn.Dropout(config.feat_quantizer_dropout)
 
-        self.quantizer = Wav2Vec2GumbelVectorQuantizer(config)
+        self.quantizer1 = Wav2Vec2GumbelVectorQuantizer(config)
+        self.quantizer2 = Wav2Vec2GumbelVectorQuantizer(config)
+        self.quantizer_limu = Wav2Vec2GumbelVectorQuantizer(config)
 
         # Initialize weights and apply final processing
         self.post_init()
 
+        # scale up limu feature sizes
+        self.limu_extract_feature_L_scaleup = nn.Linear(self.wav2vec2.limu_cfg.hidden, config.conv_dim[-1])
+        self.limu_hidden_states_L_scaleup = nn.Linear(self.wav2vec2.limu_cfg.hidden, config.hidden_size)
+
+
         # make sure that project_hid & project_q are initialized like normal linear layers
-        self.project_hid = nn.Linear(config.hidden_size, config.proj_codevector_dim)
-        self.project_q = nn.Linear(config.codevector_dim, config.proj_codevector_dim)
+        self.project_hid1 = nn.Linear(config.hidden_size, config.proj_codevector_dim)
+        self.project_hid2 = nn.Linear(config.hidden_size, config.proj_codevector_dim)
+        self.project_hid_limu = nn.Linear(config.hidden_size, config.proj_codevector_dim)
+        self.project_q1 = nn.Linear(config.codevector_dim, config.proj_codevector_dim)
+        self.project_q2 = nn.Linear(config.codevector_dim, config.proj_codevector_dim)
+        self.project_q_limu = nn.Linear(config.codevector_dim, config.proj_codevector_dim)
 
     def set_gumbel_temperature(self, temperature: int):
         """
@@ -2265,33 +2263,59 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
             mask_time_indices=mask_time_indices,
             return_dict=return_dict,
         )
+        hidden_states1 = outputs.last_hidden_state[0][:,0,:,:]
+        hidden_states2 = outputs.last_hidden_state[0][:,1,:,:]
+        limu_hidden_states = outputs.last_hidden_state[1]
+        limu_hidden_states = self.limu_hidden_states_L_scaleup(limu_hidden_states)
+
+        extract_features1 = outputs.extract_features[0][:,0,:,:]
+        extract_features2 = outputs.extract_features[0][:,1,:,:]
+        limu_extract_features = outputs.extract_features[1]
+        limu_extract_features = self.limu_extract_feature_L_scaleup(limu_extract_features)
+
 
         # 1. project all transformed features (including masked) to final vq dim
-        transformer_features = self.project_hid(outputs[0])
+        transformer_features1 = self.project_hid1(hidden_states1)
+        transformer_features2 = self.project_hid2(hidden_states2)
+        transformer_features_limu = self.project_hid_limu(limu_hidden_states)
 
         # 2. quantize all (unmasked) extracted features and project to final vq dim
-        extract_features = self.dropout_features(outputs[1])
+        extract_features1 = self.dropout_features(extract_features1)
+        extract_features2 = self.dropout_features(extract_features2)
+        extract_features_limu = self.dropout_features(limu_extract_features)
 
-        if attention_mask is not None:
-            # compute reduced attention_mask correponding to feature vectors
-            attention_mask = self._get_feature_vector_attention_mask(
-                extract_features.shape[1], attention_mask, add_adapter=False
-            )
+        # if attention_mask is not None:
+        #     # compute reduced attention_mask correponding to feature vectors
+        #     attention_mask = self._get_feature_vector_attention_mask(
+        #         extract_features.shape[1], attention_mask, add_adapter=False
+        #     )
 
-        quantized_features, codevector_perplexity = self.quantizer(
-            extract_features, mask_time_indices=mask_time_indices
+        quantized_features1, codevector_perplexity1 = self.quantizer1(
+            extract_features1, mask_time_indices=mask_time_indices
         )
-        quantized_features = self.project_q(quantized_features)
+        quantized_features1 = self.project_q1(quantized_features1)
 
+        quantized_features2, codevector_perplexity2 = self.quantizer2(
+            extract_features2, mask_time_indices=mask_time_indices
+        )
+        quantized_features2 = self.project_q1(quantized_features2)
+
+        quantized_features_limu, codevector_perplexity_limu = self.quantizer_limu(
+            extract_features_limu, mask_time_indices=mask_time_indices
+        )
+        quantized_features_limu = self.project_q_limu(quantized_features_limu)
+
+
+        # 1 ###########################
         loss = contrastive_loss = diversity_loss = None
         if sampled_negative_indices is not None:
-            batch_size, sequence_length, hidden_size = quantized_features.shape
+            batch_size, sequence_length, hidden_size = quantized_features1.shape
 
             # for training, we sample negatives
             # 3. sample K negatives (distractors) quantized states for contrastive loss
             # if attention_mask is passed, make sure that padded feature vectors cannot be sampled
             # sample negative quantized vectors BTC => (BxT)C
-            negative_quantized_features = quantized_features.view(-1, hidden_size)[
+            negative_quantized_features = quantized_features1.view(-1, hidden_size)[
                 sampled_negative_indices.long().view(-1)
             ]
             negative_quantized_features = negative_quantized_features.view(
@@ -2301,15 +2325,15 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
             # 4. compute logits, corresponding to `logs = sim(c_t, [q_t, \sim{q}_t]) / \kappa`
             # of equation (3) in https://arxiv.org/pdf/2006.11477.pdf
             logits = self.compute_contrastive_logits(
-                quantized_features[None, :],
+                quantized_features1[None, :],
                 negative_quantized_features,
-                transformer_features,
+                transformer_features1,
                 self.config.contrastive_logits_temperature,
             )
 
             # 5. if a negative vector is identical to the positive (i.e. when codebook utilization is low),
             # its cosine similarity will be masked
-            neg_is_pos = (quantized_features == negative_quantized_features).all(-1)
+            neg_is_pos = (quantized_features1 == negative_quantized_features).all(-1)
 
             if neg_is_pos.any():
                 logits[1:][neg_is_pos] = float("-inf")
@@ -2322,10 +2346,102 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
             contrastive_loss = nn.functional.cross_entropy(logits.float(), target, reduction="sum")
             # 7. compute diversity loss: \mathbf{L}_d
             num_codevectors = self.config.num_codevectors_per_group * self.config.num_codevector_groups
-            diversity_loss = ((num_codevectors - codevector_perplexity) / num_codevectors) * mask_time_indices.sum()
+            diversity_loss = ((num_codevectors - codevector_perplexity1) / num_codevectors) * mask_time_indices.sum()
 
             # 8. \mathbf{L} = \mathbf{L}_m + \alpha * \mathbf{L}_d
             loss = contrastive_loss + self.config.diversity_loss_weight * diversity_loss
+
+        # 2 ###########################
+        loss2 = contrastive_loss = diversity_loss = None
+        if sampled_negative_indices is not None:
+            batch_size, sequence_length, hidden_size = quantized_features2.shape
+
+            # for training, we sample negatives
+            # 3. sample K negatives (distractors) quantized states for contrastive loss
+            # if attention_mask is passed, make sure that padded feature vectors cannot be sampled
+            # sample negative quantized vectors BTC => (BxT)C
+            negative_quantized_features = quantized_features2.view(-1, hidden_size)[
+                sampled_negative_indices.long().view(-1)
+            ]
+            negative_quantized_features = negative_quantized_features.view(
+                batch_size, sequence_length, -1, hidden_size
+            ).permute(2, 0, 1, 3)
+
+            # 4. compute logits, corresponding to `logs = sim(c_t, [q_t, \sim{q}_t]) / \kappa`
+            # of equation (3) in https://arxiv.org/pdf/2006.11477.pdf
+            logits = self.compute_contrastive_logits(
+                quantized_features2[None, :],
+                negative_quantized_features,
+                transformer_features2,
+                self.config.contrastive_logits_temperature,
+            )
+
+            # 5. if a negative vector is identical to the positive (i.e. when codebook utilization is low),
+            # its cosine similarity will be masked
+            neg_is_pos = (quantized_features2 == negative_quantized_features).all(-1)
+
+            if neg_is_pos.any():
+                logits[1:][neg_is_pos] = float("-inf")
+
+            # 6. compute contrastive loss \mathbf{L}_m = cross_entropy(logs) =
+            # -log(exp(sim(c_t, q_t)/\kappa) / \sum_{\sim{q}} exp(sim(c_t, \sim{q})/\kappa))
+            logits = logits.transpose(0, 2).reshape(-1, logits.size(0))
+            target = ((1 - mask_time_indices.long()) * -100).transpose(0, 1).flatten()
+
+            contrastive_loss = nn.functional.cross_entropy(logits.float(), target, reduction="sum")
+            # 7. compute diversity loss: \mathbf{L}_d
+            num_codevectors = self.config.num_codevectors_per_group * self.config.num_codevector_groups
+            diversity_loss = ((num_codevectors - codevector_perplexity2) / num_codevectors) * mask_time_indices.sum()
+
+            # 8. \mathbf{L} = \mathbf{L}_m + \alpha * \mathbf{L}_d
+            loss2 = contrastive_loss + self.config.diversity_loss_weight * diversity_loss
+
+        # 1 ###########################
+        loss3 = contrastive_loss = diversity_loss = None
+        if sampled_negative_indices is not None:
+            batch_size, sequence_length, hidden_size = quantized_features_limu.shape
+
+            # for training, we sample negatives
+            # 3. sample K negatives (distractors) quantized states for contrastive loss
+            # if attention_mask is passed, make sure that padded feature vectors cannot be sampled
+            # sample negative quantized vectors BTC => (BxT)C
+            negative_quantized_features = quantized_features_limu.view(-1, hidden_size)[
+                sampled_negative_indices.long().view(-1)
+            ]
+            negative_quantized_features = negative_quantized_features.view(
+                batch_size, sequence_length, -1, hidden_size
+            ).permute(2, 0, 1, 3)
+
+            # 4. compute logits, corresponding to `logs = sim(c_t, [q_t, \sim{q}_t]) / \kappa`
+            # of equation (3) in https://arxiv.org/pdf/2006.11477.pdf
+            logits = self.compute_contrastive_logits(
+                quantized_features_limu[None, :],
+                negative_quantized_features,
+                transformer_features_limu,
+                self.config.contrastive_logits_temperature,
+            )
+
+            # 5. if a negative vector is identical to the positive (i.e. when codebook utilization is low),
+            # its cosine similarity will be masked
+            neg_is_pos = (quantized_features_limu == negative_quantized_features).all(-1)
+
+            if neg_is_pos.any():
+                logits[1:][neg_is_pos] = float("-inf")
+
+            # 6. compute contrastive loss \mathbf{L}_m = cross_entropy(logs) =
+            # -log(exp(sim(c_t, q_t)/\kappa) / \sum_{\sim{q}} exp(sim(c_t, \sim{q})/\kappa))
+            logits = logits.transpose(0, 2).reshape(-1, logits.size(0))
+            target = ((1 - mask_time_indices.long()) * -100).transpose(0, 1).flatten()
+
+            contrastive_loss = nn.functional.cross_entropy(logits.float(), target, reduction="sum")
+            # 7. compute diversity loss: \mathbf{L}_d
+            num_codevectors = self.config.num_codevectors_per_group * self.config.num_codevector_groups
+            diversity_loss = ((num_codevectors - codevector_perplexity_limu) / num_codevectors) * mask_time_indices.sum()
+
+            # 8. \mathbf{L} = \mathbf{L}_m + \alpha * \mathbf{L}_d
+            loss3 = contrastive_loss + self.config.diversity_loss_weight * diversity_loss
+
+        loss = loss + loss2 + loss3
 
         if not return_dict:
             if loss is not None:

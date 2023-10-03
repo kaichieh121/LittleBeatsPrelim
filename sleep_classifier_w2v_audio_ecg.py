@@ -146,6 +146,7 @@ if __name__ == '__main__':
     )
     setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
     setattr(config, 'mode', args.mode)
+    setattr(config, 'pretrain', False)
     # processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", )
     processor = Wav2Vec2Processor(Wav2Vec2FeatureExtractor(return_attention_mask=True), PreTrainedTokenizer())
     target_sampling_rate = 16000
@@ -256,6 +257,7 @@ if __name__ == '__main__':
     if(args.eval):
         model_name_or_path = args.ckpt_path
         config = AutoConfig.from_pretrained(model_name_or_path)
+        setattr(config, 'pretrain', False)
         model = create_model(config=config, embedding_type=embedding_dict[embedding_type], lb_audio_pretrained_weights=lb_audio_pretrained_weights,
                                  bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
         model = model.to(device)
