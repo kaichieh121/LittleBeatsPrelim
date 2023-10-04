@@ -32,7 +32,7 @@ def load_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio_
     ecg_wav, ecg_sr, ecg_timestamp = load_ecg_chunks(ecg_file, ecg_timestamp_file)
     imu_data, imu_sr, imu_timestamp = load_imu(imu_file, imu_timestamp_file)
 
-    audio_wav, ecg_wav, imu_data = align(audio_wav, audio_sr, audio_timestamp, ecg_wav, ecg_sr, ecg_timestamp, imu_data, imu_sr, imu_timestamp)
+    audio_wav, ecg_wav, imu_data, _ = align(audio_wav, audio_sr, audio_timestamp, ecg_wav, ecg_sr, ecg_timestamp, imu_data, imu_sr, imu_timestamp)
 
     num_data = math.floor(audio_wav.shape[0] / audio_sr / interval)
     audio_data = audio_wav[:num_data * interval * audio_sr].view(num_data, interval * audio_sr)
