@@ -8,7 +8,7 @@
 #SBATCH --mail-type=ALL
 
 source /opt/miniconda3/etc/profile.d/conda.sh
-PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/lb
+PYTHON_VIRTUAL_ENVIRONMENT=/home/kcchang3/.conda/envs/stable3.9
 conda activate ${PYTHON_VIRTUAL_ENVIRONMENT}
 
 . parse_options.sh || exit 1;
@@ -56,8 +56,4 @@ if [ $stage -ge 0 ] && [ $stage -le 0 ]; then
         --ecg_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/bp_ecg_500hr.pt \
         --limu_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/limu/limu_v4_sep12.pt \
         --mode "triple" \
-fi
-
-if [ $stage -ge 1 ] && [ $stage -le 1 ]; then
-    
 fi

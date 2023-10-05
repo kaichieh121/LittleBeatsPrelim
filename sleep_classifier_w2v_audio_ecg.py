@@ -21,6 +21,8 @@ import numpy as np
 from transformers import EvalPrediction
 from sklearn.metrics import classification_report
 
+from tqdm import tqdm
+
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
@@ -171,8 +173,11 @@ if __name__ == '__main__':
             tmp_data = tmp_data.reshape(tmp_data.shape[0] * tmp_data.shape[1])
             return tmp_data
 
+        # print(f'ready to parse {len(examples["audio_path"])} speech files')
         speech_list = [speech_file_to_array_fn(path) for path in examples['audio_path']]
+        # print("ready to parse ecg files")
         ecg_list = [speech_file_to_array_fn(path) for path in examples['ecg_path']]
+        # print("ready to parse imu files")
         limu_list = [imu_to_limu_format(path) for path in examples['imu_path']]
 
         audio_list = []
@@ -208,13 +213,13 @@ if __name__ == '__main__':
             preprocess_function,
             batch_size=100,
             batched=True,
-            num_proc=2
+            num_proc=1
         )
         eval_dataset = eval_dataset.map(
             preprocess_function,
             batch_size=100,
             batched=True,
-            num_proc=2
+            num_proc=1
         )
 
         data_collator = DataCollatorCTCWithPadding(processor=processor, padding=True)

@@ -1,5 +1,5 @@
 {
-  "_name_or_path": "D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights",
+  "_name_or_path": "/home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights",
   "activation_dropout": 0.05,
   "adapter_kernel_size": 3,
   "adapter_stride": 2,

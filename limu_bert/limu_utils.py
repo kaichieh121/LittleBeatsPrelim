@@ -67,7 +67,7 @@ def merge_last(x, n_dims):
 usage example
 model_cfg = load_model_config(target='pretain_base', prefix='base', version='v1')
 '''
-def load_model_config(target, prefix, version, path_bert='D://Projects/LittleBeatsPrelim_HAL/LittleBeatsPrelim/limu_bert/config/limu_bert.json', path_classifier='D://Projects/LittleBeatsPrelim_HAL/LittleBeatsPrelim/limu_bert/config/classifier.json'):
+def load_model_config(target, prefix, version, path_bert='/home/kcchang3/workplace/LittleBeatsPrelim/limu_bert/config/limu_bert.json', path_classifier='/home/kcchang3/workplace/LittleBeatsPrelim/limu_bert/config/classifier.json'):
     if "bert" not in target: # pretrain or pure classifier
         if "pretrain" in target:
             model_config_all = json.load(open(path_bert, "r"))
