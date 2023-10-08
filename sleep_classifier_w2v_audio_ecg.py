@@ -228,6 +228,7 @@ if __name__ == '__main__':
 
         model.freeze_feature_extractor()
         model.is_parallelizable = True
+        model.model_parallel = True
 
         train_dataset = train_dataset.map(
             preprocess_function,

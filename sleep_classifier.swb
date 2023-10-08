@@ -24,25 +24,9 @@ set -o pipefail
 WORK_DIR=/home/kcchang3/workplace/LittleBeatsPrelim
 cd ${WORK_DIR}
 
-# python sleep_classifier_w2v_audio_ecg.py \
-#     --train \
-#     --manifest_dir ${WORK_DIR}/manifest \
-#     --per_device_train_batch_size 16 \
-#     --per_device_eval_batch_size 16 \
-#     --num_train_epochs 2 \
-#     --ckpt_path ${WORK_DIR}/manifest/w2v-audio-and-ecg\checkpoint-best \
-#     --cache_path ~/.cache/huggingface/datasets \
-#     --embedding_type "audio" \
-#     --audio_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/lb_lena_4300hr.pt \
-#     --ecg_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/bp_ecg_500hr.pt \
-#     --limu_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/limu/limu_v4_sep12.pt \
-#     --mode "triple" \
-
-
-python -m torch.distributed.launch \
-    --nproc_per_node 2 sleep_classifier_w2v_audio_ecg.py \
+python sleep_classifier_w2v_audio_ecg.py \
     --train \
-    --manifest_dir ${WORK_DIR}/manifest \
+    --base_dir ${WORK_DIR} \
     --per_device_train_batch_size 16 \
     --per_device_eval_batch_size 16 \
     --num_train_epochs 2 \
@@ -53,3 +37,19 @@ python -m torch.distributed.launch \
     --ecg_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/bp_ecg_500hr.pt \
     --limu_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/limu/limu_v4_sep12.pt \
     --mode "triple" \
+
+
+# python -m torch.distributed.launch \
+#     --nproc_per_node 2 sleep_classifier_w2v_audio_ecg.py \
+#     --train \
+#     --base_dir ${WORK_DIR} \
+#     --per_device_train_batch_size 16 \
+#     --per_device_eval_batch_size 16 \
+#     --num_train_epochs 2 \
+#     --ckpt_path ${WORK_DIR}/manifest/w2v-audio-and-ecg\checkpoint-best \
+#     --cache_path ~/.cache/huggingface/datasets \
+#     --embedding_type "audio" \
+#     --audio_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/lb_lena_4300hr.pt \
+#     --ecg_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/bp_ecg_500hr.pt \
+#     --limu_pretrained_model /home/kcchang3/workplace/LittleBeatsPrelim/manifest/pretrained_weights/limu/limu_v4_sep12.pt \
+#     --mode "triple" \
