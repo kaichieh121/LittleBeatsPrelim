@@ -167,7 +167,7 @@ if __name__ == '__main__':
     setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
     setattr(config, 'mode', args.mode)
     setattr(config, 'pretrain', False)
-    setattr(config, 'base_dir', base_dir)
+    setattr(config, 'base_dir', base_dir.__str__())
     # processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", )
     processor = Wav2Vec2Processor(Wav2Vec2FeatureExtractor(return_attention_mask=True), PreTrainedTokenizer())
     target_sampling_rate = 16000

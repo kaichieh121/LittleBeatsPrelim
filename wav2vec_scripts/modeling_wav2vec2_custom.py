@@ -17,6 +17,7 @@
 import math
 import copy
 import warnings
+from pathlib import Path
 from dataclasses import dataclass
 from typing import Optional, Tuple, Union
 
@@ -1927,8 +1928,8 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         # ---------------------LIMU-BERT----------------------------
         if config.mode == 'triple':
-            path_bert = config.base_dir / 'limu_bert' / 'config' / 'limu_bert.json'
-            path_classifier = config.base_dir / 'limu_bert' / 'config' / 'classifier.json'
+            path_bert = Path(config.base_dir) / 'limu_bert' / 'config' / 'limu_bert.json'
+            path_classifier = Path(config.base_dir) / 'limu_bert' / 'config' / 'classifier.json'
             self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v4', path_bert=path_bert, path_classifier=path_classifier)
             self.limu = LBLIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
             if not config.pretrain:
