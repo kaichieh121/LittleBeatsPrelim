@@ -124,10 +124,10 @@ class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
         self.wav2vec2_stereo.feature_projection2.load_state_dict(self.wav2vec2_copy.feature_projection.state_dict())
 
         # # self.encoder
-        self.wav2vec2_stereo.encoder.pos_conv_embed1.load_state_dict(self.wav2vec2.encoder.pos_conv_embed.state_dict())
-        self.wav2vec2_stereo.encoder.layer_norm1.load_state_dict(self.wav2vec2.encoder.layer_norm.state_dict())
-        self.wav2vec2_stereo.encoder.pos_conv_embed2.load_state_dict(self.wav2vec2_copy.encoder.pos_conv_embed.state_dict())
-        self.wav2vec2_stereo.encoder.layer_norm2.load_state_dict(self.wav2vec2_copy.encoder.layer_norm.state_dict())
+        # self.wav2vec2_stereo.encoder.pos_conv_embed1.load_state_dict(self.wav2vec2.encoder.pos_conv_embed.state_dict())
+        # self.wav2vec2_stereo.encoder.layer_norm1.load_state_dict(self.wav2vec2.encoder.layer_norm.state_dict())
+        # self.wav2vec2_stereo.encoder.pos_conv_embed2.load_state_dict(self.wav2vec2_copy.encoder.pos_conv_embed.state_dict())
+        # self.wav2vec2_stereo.encoder.layer_norm2.load_state_dict(self.wav2vec2_copy.encoder.layer_norm.state_dict())
         # for i in range(self.config.num_hidden_layers):
         #     self.wav2vec2_stereo.encoder.layers[i].attention1.k_proj.load_state_dict(self.wav2vec2.encoder.layers[i].attention.k_proj.state_dict())
         #     self.wav2vec2_stereo.encoder.layers[i].attention1.v_proj.load_state_dict(self.wav2vec2.encoder.layers[i].attention.v_proj.state_dict())
