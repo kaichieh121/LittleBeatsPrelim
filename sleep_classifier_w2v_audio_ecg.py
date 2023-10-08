@@ -40,6 +40,7 @@ def get_arguments():
     parser.add_argument('--ecg_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\bp_ecg_500hr.pt")
     parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\limu\\limu_v3.pt")
     parser.add_argument('--mode')
+    parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
     return args
 
