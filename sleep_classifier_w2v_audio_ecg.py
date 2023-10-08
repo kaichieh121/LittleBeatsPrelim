@@ -21,12 +21,12 @@ from transformers import EvalPrediction
 from sklearn.metrics import classification_report
 
 from tqdm import tqdm
-from torch.distributed.pipeline.sync.utils import partition_model
+# from torch.distributed.pipeline.sync.utils import partition_model
 
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
-    parser.add_argument('--manifest_dir', default='D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest')
+    parser.add_argument('--base_dir', default='D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim')
     parser.add_argument('--per_device_train_batch_size', type=int, default=16)
     parser.add_argument('--per_device_eval_batch_size', type=int, default=16)
     parser.add_argument('--num_train_epochs', type=int, default=2)
@@ -108,10 +108,14 @@ def evaluate_classifier(pred, y):
     kappa = BinaryCohenKappa()(pred, y)
     return conf_matrix, accuracy, f1, kappa
 
+def count_parameters(model):
+    return sum(p.numel() for p in model.parameters() if p.requires_grad)
+
 if __name__ == '__main__':
 
     args = get_arguments()
-    manifest_dir = Path(args.manifest_dir)
+    base_dir = Path(args.base_dir)
+    manifest_dir = base_dir / 'manifest'
     manifest_dir.mkdir(parents=True, exist_ok=True)
     output_dir = manifest_dir / "w2v-audio-and-ecg"
     output_dir.mkdir(parents=True, exist_ok=True)
@@ -163,6 +167,7 @@ if __name__ == '__main__':
     setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
     setattr(config, 'mode', args.mode)
     setattr(config, 'pretrain', False)
+    setattr(config, 'base_dir', base_dir)
     # processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", )
     processor = Wav2Vec2Processor(Wav2Vec2FeatureExtractor(return_attention_mask=True), PreTrainedTokenizer())
     target_sampling_rate = 16000
@@ -222,9 +227,8 @@ if __name__ == '__main__':
                                  bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
 
         model.freeze_feature_extractor()
-        num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
-        balance = generate_balance(num_devices, len(model))
-        model = partition_model(model, balance)
+        model.is_parallelizable = True
+
         train_dataset = train_dataset.map(
             preprocess_function,
             batch_size=100,
@@ -269,6 +273,8 @@ if __name__ == '__main__':
             eval_dataset=eval_dataset,
             tokenizer=processor.feature_extractor,
         )
+
+        model.place_on_cuda()
         trainer.train()
         trainer.save_model(best_model_dir)
 

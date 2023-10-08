@@ -1927,14 +1927,17 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
 
         # ---------------------LIMU-BERT----------------------------
         if config.mode == 'triple':
-            self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v4')
+            path_bert = config.base_dir / 'limu_bert' / 'config' / 'limu_bert.json'
+            path_classifier = config.base_dir / 'limu_bert' / 'config' / 'classifier.json'
+            self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v4', path_bert=path_bert, path_classifier=path_classifier)
             self.limu = LBLIMUBertModel4Pretrain(self.limu_cfg, output_embed=True)
             if not config.pretrain:
                 self.limu.load_state_dict(torch.load(config.limu_pretrained_model, map_location=self.device))
         # ---------------------LIMU_BERT----------------------------
 
         self.config = config
-        self.feature_extractor = Wav2Vec2FeatureEncoder(config)
+
+        self.feature_extractor = Wav2Vec2FeatureEncoder(config)#.to(torch.device("cuda:0"))
 
         self.feature_projection1 = Wav2Vec2FeatureProjection(config)
         self.feature_projection2 = Wav2Vec2FeatureProjection(config)

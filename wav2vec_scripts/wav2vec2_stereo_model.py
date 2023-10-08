@@ -152,6 +152,35 @@ class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
         self.wav2vec2 = self.wav2vec2_stereo
         del(self.wav2vec2_stereo)
 
+    def place_on_cuda(self):
+        # self.feature_extractor
+        self.wav2vec2.feature_extractor = self.wav2vec2.feature_extractor.to(torch.device('cuda:0'))
+
+        # self.feature_projection 1 and 2
+        self.wav2vec2.feature_projection1 = self.wav2vec2.feature_projection1.to(torch.device('cuda:0'))
+        self.wav2vec2.feature_projection2 = self.wav2vec2.feature_projection2.to(torch.device('cuda:0'))
+
+        # # self.encoder
+        self.wav2vec2.encoder.pos_conv_embed1 = self.wav2vec2.encoder.pos_conv_embed1.to(torch.device('cuda:0'))
+        self.wav2vec2.encoder.layer_norm1 = self.wav2vec2.encoder.layer_norm1.to(torch.device('cuda:0'))
+        self.wav2vec2.encoder.pos_conv_embed2 = self.wav2vec2.encoder.pos_conv_embed2.to(torch.device('cuda:0'))
+        self.wav2vec2.encoder.layer_norm2 = self.wav2vec2.encoder.layer_norm2.to(torch.device('cuda:0'))
+        for i in range(0, 4):
+            self.wav2vec2.encoder.layers[i] = self.wav2vec2.encoder.layers[i].to(torch.device('cuda:1'))
+
+        for i in range(4, 8):
+            self.wav2vec2.encoder.layers[i] = self.wav2vec2.encoder.layers[i].to(torch.device('cuda:2'))
+
+        for i in range(8, 12):
+            self.wav2vec2.encoder.layers[i] = self.wav2vec2.encoder.layers[i].to(torch.device('cuda:3'))
+
+
+        self.wav2vec2.encoder.layer_norm1 = self.wav2vec2.encoder.layer_norm1.to(torch.device('cuda:0'))
+        self.wav2vec2.encoder.layer_norm2 = self.wav2vec2.encoder.layer_norm2.to(torch.device('cuda:0'))
+
+        self.wav2vec2.limu = self.wav2vec2.limu.to(torch.device('cuda:0'))
+        self.classifier = self.classifier.to(torch.device('cuda:0'))
+
     def merged_strategy(
             self,
             hidden_states,
@@ -168,7 +197,8 @@ class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
                 "The pooling method hasn't been defined! Your pooling mode must be one of these ['mean', 'sum', 'max']")
 
         return outputs
-
+    def __len__(self):
+        return len(self.wav2vec2)
     def forward(
             self,
             input_values,
