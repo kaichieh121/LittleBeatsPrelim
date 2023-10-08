@@ -1,6 +1,6 @@
 import os, sys
 sys.path.insert(0, os.path.abspath(".."))
-import time
+import time, math
 import argparse
 from pathlib import Path
 import torch, torchaudio
@@ -8,7 +8,6 @@ import warnings
 import pandas as pd
 from transformers import AutoConfig, Wav2Vec2Processor, Wav2Vec2FeatureExtractor, PreTrainedTokenizer
 from LittleBeatsPrelim.wav2vec_scripts.datacollector import DataCollatorCTCWithPadding
-# from LittleBeatsPrelim.wav2vec_scripts.wav2vec_audio_ecg_model import AllModalityModel, OneModalityModel
 from LittleBeatsPrelim.wav2vec_scripts.wav2vec2_stereo_model import AllModalityModel, create_model
 
 from transformers import TrainingArguments
@@ -22,6 +21,7 @@ from transformers import EvalPrediction
 from sklearn.metrics import classification_report
 
 from tqdm import tqdm
+from torch.distributed.pipeline.sync.utils import partition_model
 
 
 def get_arguments():
@@ -49,6 +49,19 @@ def label_to_id(label, label_list):
     if len(label_list) > 0:
         return label_list.index(label) if label in label_list else -1
     return label
+
+def generate_balance(num_devices, num_layers):
+    balance = []
+    layers_assigned = 0
+    for i in range(num_devices):
+        x = (num_layers - layers_assigned) / (num_devices - i)
+        if x.is_integer():
+            balance.append(int(x))
+            layers_assigned += x
+        else:
+            balance.append(math.ceil(x))
+            layers_assigned += math.ceil(x)
+    return balance
 
 def down_sample(data, window_sample, start, end):
     data = data.numpy()
@@ -209,7 +222,9 @@ if __name__ == '__main__':
                                  bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
 
         model.freeze_feature_extractor()
-
+        num_devices = torch.cuda.device_count() if torch.cuda.is_available() else 1
+        balance = generate_balance(num_devices, len(model))
+        model = partition_model(model, balance)
         train_dataset = train_dataset.map(
             preprocess_function,
             batch_size=100,
