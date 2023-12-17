@@ -39,6 +39,7 @@ def get_arguments():
     parser.add_argument('--audio_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\lb_lena_4300hr.pt")
     parser.add_argument('--ecg_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\bp_ecg_500hr.pt")
     parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\limu\\limu_v3.pt")
+    parser.add_argument('--triple_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest_pretrain\\w2v-audio-and-ecg")
     parser.add_argument('--mode')
     parser.add_argument('--local_rank', type=int, default=0)
     args = parser.parse_args()
@@ -168,7 +169,11 @@ if __name__ == '__main__':
     setattr(config, 'mode', args.mode)
     setattr(config, 'pretrain', False)
     setattr(config, 'base_dir', base_dir.__str__())
-    # processor = Wav2Vec2Processor.from_pretrained("jonatasgrosman/wav2vec2-large-xlsr-53-english", )
+
+    if(args.mode == 'triple_pretrained'):
+        config = AutoConfig.from_pretrained(args.triple_pretrained_model)
+        setattr(config, 'mode', args.mode)
+
     processor = Wav2Vec2Processor(Wav2Vec2FeatureExtractor(return_attention_mask=True), PreTrainedTokenizer())
     target_sampling_rate = 16000
 
@@ -224,11 +229,12 @@ if __name__ == '__main__':
             model = create_model(config=config,
                                  embedding_type=embedding_dict[embedding_type],
                                  lb_audio_pretrained_weights=lb_audio_pretrained_weights,
-                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
+                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights,
+                                 triple_pretrained_weights=Path(args.triple_pretrained_model)/'pytorch_model.bin')
 
         model.freeze_feature_extractor()
-        model.is_parallelizable = True
-        model.model_parallel = True
+        # model.is_parallelizable = True
+        # model.model_parallel = True
 
         train_dataset = train_dataset.map(
             preprocess_function,
@@ -275,7 +281,6 @@ if __name__ == '__main__':
             tokenizer=processor.feature_extractor,
         )
 
-        model.place_on_cuda()
         trainer.train()
         trainer.save_model(best_model_dir)
 
@@ -285,9 +290,11 @@ if __name__ == '__main__':
     if(args.eval):
         model_name_or_path = args.ckpt_path
         config = AutoConfig.from_pretrained(model_name_or_path)
+        setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
         setattr(config, 'pretrain', False)
         model = create_model(config=config, embedding_type=embedding_dict[embedding_type], lb_audio_pretrained_weights=lb_audio_pretrained_weights,
-                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
+                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights,
+                                 triple_pretrained_weights=Path(args.triple_pretrained_model)/'pytorch_model.bin')
         model = model.to(device)
         model.load_state_dict(torch.load(Path(model_name_or_path) / "pytorch_model.bin"))
 

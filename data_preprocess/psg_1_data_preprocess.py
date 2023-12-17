@@ -19,8 +19,8 @@ def read_avg_hr(dir):
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
-    parser.add_argument('--data_dir', default="D:\\datasets\\littlebeats\\PSG_LB_Adult_Sleep_Study\\Data Files")
-    parser.add_argument('--output_dir', default="D:\\datasets\\littlebeats\\psg_data_clean")
+    parser.add_argument('--data_dir', default="C:\\Users\\pokej\\Box\\JeffWorkSpace\\psg_files")
+    parser.add_argument('--output_dir', default="C:\\Users\\pokej\\Box\\JeffWorkSpace\\psg_data_test")
     parser.add_argument('--interval', type=int, default=30)
     parser.add_argument('--dir_count', type=int, default=10000)
     parser.add_argument('--gmt_offset', type=int, default=-5)
@@ -32,13 +32,12 @@ def load_sleep_label(num_data, labels_raw, label_start_index=0):
         num_data = labels_raw.shape[0]
     label = torch.zeros(num_data)
     for i in range(num_data):
-        if(label_start_index+i>=908):
-            print()
         if("Wake" in labels_raw[label_start_index+i][1]):
             label[i] = 0
-        elif("Stage 1" in labels_raw[label_start_index+i][1]):
-            label[i] = 1
-        elif ("Stage 2" in labels_raw[label_start_index + i][1]):
+        elif("Stage 1" in labels_raw[label_start_index+i][1] or
+             "Stage 2" in labels_raw[label_start_index + i][1] or
+             "Stage 3" in labels_raw[label_start_index + i][1] or
+            "NREM" in labels_raw[label_start_index+i][1]):
             label[i] = 1
         elif("REM" in labels_raw[label_start_index+i][1]):
             label[i] = 2
@@ -89,6 +88,17 @@ def load_data(imu_file, imu_timestamp_file, ecg_file, ecg_timestamp_file, audio_
     return audio_data.to(torch.float), audio_sr, ecg_data, ecg_sr, imu_data, imu_sr, label
 
 def make_split(dir_list, data_dir, output_dir, interval, gmt_offset):
+
+    idx = 0
+    train_output_dir = output_dir / 'train'
+    train_output_dir.mkdir(parents=True, exist_ok=True)
+    train_label_file = open(train_output_dir / 'label.csv', mode='w')
+    val_output_dir = output_dir / 'val'
+    val_output_dir.mkdir(parents=True, exist_ok=True)
+    val_label_file = open(val_output_dir / 'label.csv', mode='w')
+    test_output_dir = output_dir / 'test'
+    test_output_dir.mkdir(parents=True, exist_ok=True)
+    test_label_file = open(test_output_dir / 'label.csv', mode='w')
 
 
     for dir in dir_list:
@@ -162,44 +172,35 @@ def make_split(dir_list, data_dir, output_dir, interval, gmt_offset):
             imu_data[key] = imu_data[key][rand_gen_int, :]
         label = label[rand_gen_int]
 
-        sub_output_dir = output_dir / 'train'
-        sub_output_dir.mkdir(parents=True, exist_ok=True)
+
         audio_x = audio_data[:train_split_idx, :]
         ecg_x = ecg_data[:train_split_idx, :]
         imu_x = copy.deepcopy(imu_data)
         for i, (key, val) in enumerate(imu_data.items()):
             imu_x[key] = imu_data[key][:train_split_idx, :]
         label_x = label[:train_split_idx]
-        label_file = open(sub_output_dir / 'label.csv', mode='w')
-        idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_x, imu_sr, label_x, sub_output_dir, label_file, idx=0, avg_hr=None, avg_hr_file=None)
-        label_file.close()
+        idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_x, imu_sr, label_x, train_output_dir, train_label_file, idx=idx, avg_hr=None, avg_hr_file=None)
 
-        sub_output_dir = output_dir / 'val'
-        sub_output_dir.mkdir(parents=True, exist_ok=True)
         audio_x = audio_data[train_split_idx:val_split_idx, :]
         ecg_x = ecg_data[train_split_idx:val_split_idx, :]
         imu_x = copy.deepcopy(imu_data)
         for i, (key, val) in enumerate(imu_data.items()):
             imu_x[key] = imu_data[key][train_split_idx:val_split_idx, :]
         label_x = label[train_split_idx:val_split_idx]
-        label_file = open(sub_output_dir / 'label.csv', mode='w')
-        idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_x, imu_sr, label_x, sub_output_dir, label_file, idx=0, avg_hr=None, avg_hr_file=None)
-        label_file.close()
+        idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_x, imu_sr, label_x, val_output_dir, val_label_file, idx=idx, avg_hr=None, avg_hr_file=None)
 
-        sub_output_dir = output_dir / 'test'
-        sub_output_dir.mkdir(parents=True, exist_ok=True)
         audio_x = audio_data[val_split_idx:, :]
         ecg_x = ecg_data[val_split_idx:, :]
         imu_x = copy.deepcopy(imu_data)
         for i, (key, val) in enumerate(imu_data.items()):
             imu_x[key] = imu_data[key][val_split_idx:, :]
         label_x = label[val_split_idx:]
-        label_file = open(sub_output_dir / 'label.csv', mode='w')
-        idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_x, imu_sr, label_x, sub_output_dir, label_file, idx=0, avg_hr=None, avg_hr_file=None)
-        label_file.close()
+        idx = create_chunks(audio_x, audio_sr, ecg_x, ecg_sr, imu_x, imu_sr, label_x, test_output_dir, test_label_file, idx=idx, avg_hr=None, avg_hr_file=None)
 
 
-    label_file.close()
+    train_label_file.close()
+    val_label_file.close()
+    test_label_file.close()
 
 
 def main():

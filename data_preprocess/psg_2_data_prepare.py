@@ -17,7 +17,7 @@ IDX2LABEL = {0: "Wake",
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
-    parser.add_argument('--data_dir', default='D:\\datasets\\littlebeats\\psg_data_clean')
+    parser.add_argument('--data_dir', default='C:\\Users\\pokej\\Box\\JeffWorkSpace\\psg_data_test')
     parser.add_argument('--output_dir', default='D:/Projects/LittleBeatsPrelim_HAL/LittleBeatsPrelim/manifest_psg')
     args = parser.parse_args()
     return args

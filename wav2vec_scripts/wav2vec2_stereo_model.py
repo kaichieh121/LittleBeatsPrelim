@@ -26,7 +26,7 @@ class SpeechClassifierOutput(ModelOutput):
     hidden_states: Optional[Tuple[torch.FloatTensor]] = None
     attentions: Optional[Tuple[torch.FloatTensor]] = None
 
-def create_model(config, embedding_type, lb_audio_pretrained_weights, bp_ecg_pretrained_weights):
+def create_model(config, embedding_type, lb_audio_pretrained_weights, bp_ecg_pretrained_weights, triple_pretrained_weights=None):
     mode = config.mode
     if mode == 'mono':
         model = OneModalityModel(config=config, mode=embedding_type)
@@ -40,29 +40,55 @@ def create_model(config, embedding_type, lb_audio_pretrained_weights, bp_ecg_pre
         # model = TwoModalityModel(config)
     elif mode == 'triple' or mode == 'stereo+limu':
         if config.pretrain:
-            model = AllModalityModelForPreTraining(config=config, embedding_type=embedding_type)
+            model = AllModalityModelForPreTraining(config=config)
         else:
             model = AllModalityModel(config=config, embedding_type=embedding_type)
-            model = load_fairseq_weights(model, 'wav2vec2', lb_audio_pretrained_weights['model'], config)
-            model = load_fairseq_weights(model, 'wav2vec2_copy', bp_ecg_pretrained_weights['model'], config)
+        model = load_fairseq_weights(model, 'wav2vec2', lb_audio_pretrained_weights['model'], config)
+        model = load_fairseq_weights(model, 'wav2vec2_copy', bp_ecg_pretrained_weights['model'], config)
     elif mode == 'baseline_ecg' or mode == 'baseline_resp_ecg':
         model = BaselineModel(config=config, mode=mode, embedding_type=1)
+    elif mode == 'triple_pretrained':
+        weights = torch.load(triple_pretrained_weights)
+        model = AllModalityModelFromPreTraining(config, weights)
+
     model.update_weights()
     return model
 
+
+
 class AllModalityModelForPreTraining(Wav2Vec2PreTrainedModel_custom):
-    def __init__(self, config, embedding_type):
+    def __init__(self, config):
         super().__init__(config)
         self.num_labels = config.num_labels
         self.pooling_mode = config.pooling_mode
         self.config = config
-        self.wav2vec2 = Wav2Vec2ForPreTraining(config)
-        self.embedding_type = embedding_type
+        self.wav2vec2 = Wav2Vec2Model(config)
+        self.wav2vec2_copy = Wav2Vec2Model(config)
+        self.wav2vec2_stereo = Wav2Vec2ForPreTraining(config)
         self.mode = config.mode
         self.init_weights()
 
     def freeze_feature_extractor(self):
-        self.wav2vec2.feature_extractor._freeze_parameters()
+        self.wav2vec2.freeze_feature_extractor()
+
+    def update_weights(self):
+        # self.feature_extractor
+        for i in range(self.config.num_feat_extract_layers):
+            self.wav2vec2_stereo.wav2vec2.feature_extractor.conv_layers[i].conv1.load_state_dict(self.wav2vec2.feature_extractor.conv_layers[i].conv.state_dict())
+            self.wav2vec2_stereo.wav2vec2.feature_extractor.conv_layers[i].conv2.load_state_dict(self.wav2vec2_copy.feature_extractor.conv_layers[i].conv.state_dict())
+            if i == 0:
+                self.wav2vec2_stereo.wav2vec2.feature_extractor.conv_layers[i].layer_norm1.load_state_dict(self.wav2vec2.feature_extractor.conv_layers[i].layer_norm.state_dict())
+                self.wav2vec2_stereo.wav2vec2.feature_extractor.conv_layers[i].layer_norm2.load_state_dict(self.wav2vec2_copy.feature_extractor.conv_layers[i].layer_norm.state_dict())
+
+
+        # self.feature_projection 1 and 2
+        # self.wav2vec2_stereo.wav2vec2.feature_projection1.load_state_dict(self.wav2vec2.feature_projection.state_dict())
+        # self.wav2vec2_stereo.wav2vec2.feature_projection2.load_state_dict(self.wav2vec2_copy.feature_projection.state_dict())
+
+        del(self.wav2vec2)
+        del(self.wav2vec2_copy)
+        self.wav2vec2 = self.wav2vec2_stereo
+        del(self.wav2vec2_stereo)
 
     def forward(
             self,
@@ -84,9 +110,96 @@ class AllModalityModelForPreTraining(Wav2Vec2PreTrainedModel_custom):
 
         return output
 
-    def update_weights(self):
-        pass
+class AllModalityModelFromPreTraining(AllModalityModelForPreTraining):
+    def __init__(self, config, weights):
+        super().__init__(config)
+        super().update_weights()
+        self.load_state_dict(weights)
+        self.classifier = AllThreeLayerClassifier(config)
+        self.init_weights()
 
+    def freeze_feature_extractor(self):
+        self.wav2vec2.freeze_feature_extractor()
+
+    def update_weights(self):
+        self.wav2vec2 = self.wav2vec2.wav2vec2
+
+    def merged_strategy(
+            self,
+            hidden_states,
+            mode="mean"
+    ):
+        if mode == "mean":
+            outputs = torch.mean(hidden_states, dim=1)
+        elif mode == "sum":
+            outputs = torch.sum(hidden_states, dim=1)
+        elif mode == "max":
+            outputs = torch.max(hidden_states, dim=1)[0]
+        else:
+            raise Exception(
+                "The pooling method hasn't been defined! Your pooling mode must be one of these ['mean', 'sum', 'max']")
+
+        return outputs
+
+    def forward(
+            self,
+            input_values,
+            attention_mask=None,
+            output_attentions=None,
+            output_hidden_states=None,
+            return_dict=None,
+            labels=None,
+    ):
+        # output_hidden_states = True
+        return_dict = return_dict if return_dict is not None else self.config.use_return_dict
+        outputs = self.wav2vec2(
+            input_values,
+            attention_mask=attention_mask,
+            output_attentions=output_attentions,
+            output_hidden_states=output_hidden_states,
+            return_dict=return_dict,
+        )
+        hidden_states = outputs.last_hidden_state[0]
+        attentions = outputs.extract_features
+        limu_hidden_states = outputs.last_hidden_state[1]
+        limu_hidden_states = self.merged_strategy(limu_hidden_states, mode=self.pooling_mode)
+        hidden_states1 = self.merged_strategy(hidden_states[:, 0, :, :], mode=self.pooling_mode)
+        hidden_states2 = self.merged_strategy(hidden_states[:, 1, :, :], mode=self.pooling_mode)
+
+        hidden_states = torch.cat((hidden_states1, hidden_states2, limu_hidden_states), dim=1)
+
+        logits = self.classifier(hidden_states)
+
+        loss = None
+        if labels is not None:
+            if self.config.problem_type is None:
+                if self.num_labels == 1:
+                    self.config.problem_type = "regression"
+                elif self.num_labels > 1 and (labels.dtype == torch.long or labels.dtype == torch.int):
+                    self.config.problem_type = "single_label_classification"
+                else:
+                    self.config.problem_type = "multi_label_classification"
+
+            if self.config.problem_type == "regression":
+                loss_fct = MSELoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels)
+            elif self.config.problem_type == "single_label_classification":
+                loss_fct = CrossEntropyLoss()
+                loss = loss_fct(logits.view(-1, self.num_labels), labels.view(-1))
+            elif self.config.problem_type == "multi_label_classification":
+                loss_fct = BCEWithLogitsLoss()
+                loss = loss_fct(logits, labels)
+
+        if not return_dict:
+            output = (logits,) + outputs[2:]
+            return ((loss,) + output) if loss is not None else output
+
+        return SpeechClassifierOutput(
+            loss=loss,
+            logits=logits,
+            hidden_states=hidden_states,
+            attentions=attentions,
+        )
 
 
 class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
@@ -120,8 +233,8 @@ class AllModalityModel(Wav2Vec2PreTrainedModel_custom):
 
 
         # self.feature_projection 1 and 2
-        self.wav2vec2_stereo.feature_projection1.load_state_dict(self.wav2vec2.feature_projection.state_dict())
-        self.wav2vec2_stereo.feature_projection2.load_state_dict(self.wav2vec2_copy.feature_projection.state_dict())
+        # self.wav2vec2_stereo.feature_projection1.load_state_dict(self.wav2vec2.feature_projection.state_dict())
+        # self.wav2vec2_stereo.feature_projection2.load_state_dict(self.wav2vec2_copy.feature_projection.state_dict())
 
         # # self.encoder
         # self.wav2vec2_stereo.encoder.pos_conv_embed1.load_state_dict(self.wav2vec2.encoder.pos_conv_embed.state_dict())

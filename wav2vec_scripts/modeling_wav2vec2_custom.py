@@ -1184,7 +1184,7 @@ class Wav2Vec2EncoderLayerStableLayerNorm(nn.Module):
         hidden_states2 = attn_residual2 + hidden_states2
         hidden_states2 = hidden_states2 + self.feed_forward2(self.final_layer_norm2(hidden_states2))
 
-        if self.config.mode == 'triple':
+        if 'triple' in self.config.mode:
             if(self.cross_attention):
                 limu_hidden_states = self.attn(limu_hidden_states, key_value_states=[hidden_states1, hidden_states2])
             else:
@@ -1927,7 +1927,7 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
         super().__init__(config)
 
         # ---------------------LIMU-BERT----------------------------
-        if config.mode == 'triple':
+        if 'triple' in config.mode:
             path_bert = Path(config.base_dir) / 'limu_bert' / 'config' / 'limu_bert.json'
             path_classifier = Path(config.base_dir) / 'limu_bert' / 'config' / 'classifier.json'
             self.limu_cfg = limu_utils.load_model_config(target='pretrain_base', prefix='base', version='v4', path_bert=path_bert, path_classifier=path_classifier)
@@ -1948,7 +1948,7 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
             self.masked_spec_embed = nn.Parameter(torch.FloatTensor(config.hidden_size).uniform_())
 
         if config.do_stable_layer_norm:
-            if config.mode == 'triple':
+            if 'triple' in config.mode:
                 # for limu with repeating attention layers
                 # self.encoder = Wav2Vec2EncoderStableLayerNorm(config, self.limu_cfg, self.limu.transformer)
                 # for limu with 12 seperate attention layers
@@ -2081,7 +2081,7 @@ class Wav2Vec2Model(Wav2Vec2PreTrainedModel):
         )
 
         extract_features_limu = None
-        if self.config.mode == 'triple':
+        if 'triple' in self.config.mode:
             imu_data = input_values[:,2,:3600]
             imu_data = imu_data.reshape(imu_data.shape[0], -1, 120, 6)
             # hidden_states_limu = self.limu.transformer.embed(imu_data.mean(dim=1))
@@ -2128,7 +2128,9 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
 
         # scale up limu feature sizes
         self.limu_extract_feature_L_scaleup = nn.Linear(self.wav2vec2.limu_cfg.hidden, config.conv_dim[-1])
+        self.limu_extract_feature_C_scaleup = nn.Conv1d(120, 1499, 1)
         self.limu_hidden_states_L_scaleup = nn.Linear(self.wav2vec2.limu_cfg.hidden, config.hidden_size)
+        self.limu_hidden_states_C_scaleup = nn.Conv1d(120, 1499, 1)
 
 
         # make sure that project_hid & project_q are initialized like normal linear layers
@@ -2143,7 +2145,9 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
         """
         Set the Gumbel softmax temperature to a given value. Only necessary for training
         """
-        self.quantizer.temperature = temperature
+        self.quantizer1.temperature = temperature
+        self.quantizer2.temperature = temperature
+        self.quantizer_limu.temperature = temperature
 
     def freeze_feature_extractor(self):
         """
@@ -2271,11 +2275,13 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
         hidden_states2 = outputs.last_hidden_state[0][:,1,:,:]
         limu_hidden_states = outputs.last_hidden_state[1]
         limu_hidden_states = self.limu_hidden_states_L_scaleup(limu_hidden_states)
+        limu_hidden_states = self.limu_extract_feature_C_scaleup(limu_hidden_states)
 
         extract_features1 = outputs.extract_features[0][:,0,:,:]
         extract_features2 = outputs.extract_features[0][:,1,:,:]
         limu_extract_features = outputs.extract_features[1]
         limu_extract_features = self.limu_extract_feature_L_scaleup(limu_extract_features)
+        limu_extract_features = self.limu_extract_feature_C_scaleup(limu_extract_features)
 
 
         # 1. project all transformed features (including masked) to final vq dim
@@ -2286,7 +2292,7 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
         # 2. quantize all (unmasked) extracted features and project to final vq dim
         extract_features1 = self.dropout_features(extract_features1)
         extract_features2 = self.dropout_features(extract_features2)
-        extract_features_limu = self.dropout_features(limu_extract_features)
+        limu_extract_features = self.dropout_features(limu_extract_features)
 
         # if attention_mask is not None:
         #     # compute reduced attention_mask correponding to feature vectors
@@ -2305,7 +2311,7 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
         quantized_features2 = self.project_q1(quantized_features2)
 
         quantized_features_limu, codevector_perplexity_limu = self.quantizer_limu(
-            extract_features_limu, mask_time_indices=mask_time_indices
+            limu_extract_features, mask_time_indices=mask_time_indices
         )
         quantized_features_limu = self.project_q_limu(quantized_features_limu)
 
@@ -2446,6 +2452,15 @@ class Wav2Vec2ForPreTraining(Wav2Vec2PreTrainedModel):
             loss3 = contrastive_loss + self.config.diversity_loss_weight * diversity_loss
 
         loss = loss + loss2 + loss3
+
+        transformer_features = torch.cat((transformer_features1.unsqueeze(dim=1), transformer_features2.unsqueeze(dim=1),
+                                          transformer_features_limu.unsqueeze(dim=1)), dim=1)
+        quantized_features = torch.cat((quantized_features1.unsqueeze(dim=1), quantized_features2.unsqueeze(dim=1),
+             quantized_features_limu.unsqueeze(dim=1)), dim=1)
+
+        codevector_perplexity = torch.cat((codevector_perplexity1.unsqueeze(dim=0), codevector_perplexity2.unsqueeze(dim=0),
+                                        codevector_perplexity_limu.unsqueeze(dim=0)), dim=0)
+
 
         if not return_dict:
             if loss is not None:

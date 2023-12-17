@@ -55,13 +55,13 @@
   "finetuning_task": "wav2vec2_clf",
   "hidden_act": "gelu",
   "hidden_dropout": 0.05,
-  "hidden_size": 768,
+  "hidden_size": 384,
   "id2label": {
     "0": "wake",
     "1": "sleep"
   },
   "initializer_range": 0.02,
-  "intermediate_size": 3072,
+  "intermediate_size": 1536,
   "label2id": {
     "sleep": 1,
     "wake": 0
@@ -92,7 +92,7 @@
   "num_feat_extract_layers": 7,
   "num_hidden_layers": 12,
   "num_negatives": 100,
-  "output_hidden_size": 768,
+  "output_hidden_size": 384,
   "pad_token_id": 0,
   "pooling_mode": "mean",
   "problem_type": "single_label_classification",

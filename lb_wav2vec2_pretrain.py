@@ -41,9 +41,9 @@ logger = get_logger(__name__)
 
 def get_arguments():
     parser = argparse.ArgumentParser(description='Process arguments')
-    parser.add_argument('--manifest_dir', default='D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest')
-    parser.add_argument('--per_device_train_batch_size', type=int, default=16)
-    parser.add_argument('--per_device_eval_batch_size', type=int, default=16)
+    parser.add_argument('--base_dir', default='D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim')
+    parser.add_argument('--per_device_train_batch_size', type=int, default=4)
+    parser.add_argument('--per_device_eval_batch_size', type=int, default=4)
     parser.add_argument(
         "--learning_rate",
         type=float,
@@ -51,12 +51,24 @@ def get_arguments():
         help="Initial learning rate (after the potential warmup period) to use.",
     )
     parser.add_argument("--weight_decay", type=float, default=0.0, help="Weight decay to use.")
-    parser.add_argument("--num_train_epochs", type=int, default=3, help="Total number of training epochs to perform.")
+    parser.add_argument("--num_train_epochs", type=int, default=4, help="Total number of training epochs to perform.")
     parser.add_argument(
         "--max_train_steps",
         type=int,
         default=None,
         help="Total number of training steps to perform. If provided, overrides num_train_epochs.",
+    )
+    parser.add_argument(
+        "--logging_steps",
+        type=int,
+        default=10,
+        help="Number of steps between each logging",
+    )
+    parser.add_argument(
+        "--saving_steps",
+        type=int,
+        default=50,
+        help="Number of steps between each logging",
     )
     parser.add_argument(
         "--gradient_accumulation_steps",
@@ -69,13 +81,13 @@ def get_arguments():
         action="store_true",
         help="If True, use gradient checkpointing to save memory at the expense of slower backward pass.",
     )
-    parser.add_argument('--ckpt_path', default='/home/kcchang3/data/LittleBeats/manifest/wav2vec2-xlsr-english-speech-sleep-recognition/checkpoint-300')
-    parser.add_argument('--cache_path', default='~/.cache/huggingface/datasets')
+    parser.add_argument('--ckpt_path', default='D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\w2v-audio-and-ecg')
+    parser.add_argument('--cache_path', default='D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\.cache\\huggingface\\datasets')
     parser.add_argument('--embedding_type', default='audio')
-    parser.add_argument('--audio_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\lb_lena_4300hr.pt")
-    parser.add_argument('--ecg_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\bp_ecg_500hr.pt")
-    parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest\\pretrained_weights\\limu\\limu_v3.pt")
-    parser.add_argument('--mode')
+    parser.add_argument('--audio_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest_pretrain\\pretrained_weights\\lb_lena_4300hr.pt")
+    parser.add_argument('--ecg_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest_pretrain\\pretrained_weights\\bp_ecg_500hr.pt")
+    parser.add_argument('--limu_pretrained_model', default="D:\\Projects\\LittleBeatsPrelim_HAL\\LittleBeatsPrelim\\manifest_pretrain\\pretrained_weights\\limu\\limu_v3_separate4.pt")
+    parser.add_argument('--mode', default='triple')
     parser.add_argument("--seed", type=int, default=0, help="A seed for reproducible training.")
     parser.add_argument(
         "--validation_split_percentage",
@@ -131,12 +143,27 @@ def get_arguments():
     parser.add_argument(
         "--lr_scheduler_type",
         type=SchedulerType,
-        default="linear",
+        default="constant",
         help="The scheduler type to use.",
         choices=["linear", "cosine", "cosine_with_restarts", "polynomial", "constant", "constant_with_warmup"],
     )
     parser.add_argument(
         "--num_warmup_steps", type=int, default=0, help="Number of steps for the warmup in the lr scheduler."
+    )
+    parser.add_argument(
+        "--max_gumbel_temperature",
+        type=float,
+        default=2.0,
+        help="Maximum temperature for gumbel softmax.",
+    )
+    parser.add_argument(
+        "--min_gumbel_temperature",
+        type=float,
+        default=0.5,
+        help="Minimum temperature for gumbel softmax.",
+    )
+    parser.add_argument(
+        "--gumbel_temperature_decay", type=float, default=0.999995, help="Decay of gumbel temperature during training."
     )
     args = parser.parse_args()
     return args
@@ -280,11 +307,11 @@ def down_sample(data, window_sample, start, end):
 if __name__ == '__main__':
 
     args = get_arguments()
-    manifest_dir = Path(args.manifest_dir)
+    base_dir = Path(args.base_dir)
+    manifest_dir = base_dir / 'manifest_pretrain'
     manifest_dir.mkdir(parents=True, exist_ok=True)
     output_dir = manifest_dir / "w2v-audio-and-ecg"
     output_dir.mkdir(parents=True, exist_ok=True)
-    best_model_dir = output_dir / "checkpoint-best"
 
     embedding_type = args.embedding_type
     embedding_dict = {'audio': 0, 'ecg': 1}
@@ -317,17 +344,13 @@ if __name__ == '__main__':
 
     # Load dataset
     data_files = {
-        "train": f"{manifest_dir / 'train.csv'}",
-        "validation": f"{manifest_dir / 'val.csv'}",
-        "test": f"{manifest_dir / 'test.csv'}"
+        "train": f"{manifest_dir / 'train.csv'}"
     }
     dataset = load_dataset("csv", data_files=data_files, delimiter="\t", cache_dir=args.cache_path)
     train_dataset = dataset["train"]
-    eval_dataset = dataset["validation"]
-    test_dataset = dataset["test"]
 
     raw_datasets = DatasetDict()
-    raw_datasets["train"] = concatenate_datasets([train_dataset, eval_dataset]).shuffle(seed=args.seed)
+    raw_datasets["train"] = concatenate_datasets([train_dataset]).shuffle(seed=args.seed)
 
     num_validation_samples = raw_datasets["train"].num_rows * args.validation_split_percentage // 100
     if num_validation_samples == 0:
@@ -337,7 +360,6 @@ if __name__ == '__main__':
             "`args.num_validation_split_percentage`. "
         )
 
-    raw_datasets["validation"] = raw_datasets["train"].select(range(num_validation_samples))
     raw_datasets["train"] = raw_datasets["train"].select(range(num_validation_samples, raw_datasets["train"].num_rows))
 
     # preprocess datasets
@@ -382,22 +404,29 @@ if __name__ == '__main__':
             num_proc=2
         )
 
+    # Looking for best checkpoint
+    use_ckpt = False
+    for file in output_dir.iterdir():
+        if "pytorch_model" in file.name:
+            use_ckpt = True
+            print("Training from best checkpoint")
+        else:
+            print("Training from scratch")
 
 
     # config
-    model_name_or_path = manifest_dir / 'pretrained_weights'
-
-    config = AutoConfig.from_pretrained(
-        model_name_or_path,
-        finetuning_task="wav2vec2_clf",
-    )
-    setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
-    setattr(config, 'mode', args.mode)
-    setattr(config, 'pretrain', True)
-
-
-
-
+    if(use_ckpt):
+        config = AutoConfig.from_pretrained(output_dir)
+    else:
+        model_name_or_path = manifest_dir / 'pretrained_weights'
+        config = AutoConfig.from_pretrained(
+            model_name_or_path,
+            finetuning_task="wav2vec2_clf",
+        )
+        setattr(config, 'limu_pretrained_model', args.limu_pretrained_model)
+        setattr(config, 'mode', args.mode)
+        setattr(config, 'pretrain', True)
+        setattr(config, 'base_dir', base_dir.__str__())
 
 
 
@@ -408,8 +437,13 @@ if __name__ == '__main__':
     model = create_model(config=config,
                          embedding_type=embedding_dict[embedding_type],
                          lb_audio_pretrained_weights=lb_audio_pretrained_weights,
-                         bp_ecg_pretrained_weights=bp_ecg_pretrained_weights,
-                         pretrain=True)
+                         bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
+    # model = Wav2Vec2ForPreTraining(config=config)
+    if(use_ckpt):
+        print(f'loading state dict from {output_dir}')
+        model.load_state_dict(torch.load(output_dir / "pytorch_model.bin"))
+    model = model.to('cuda')
+    model.freeze_feature_extractor()
 
     # Activate gradient checkpointing if needed
     if args.gradient_checkpointing:
@@ -434,9 +468,7 @@ if __name__ == '__main__':
         batch_size=args.per_device_train_batch_size,
         pin_memory=False,
     )
-    eval_dataloader = DataLoader(
-        vectorized_datasets["validation"], collate_fn=data_collator, batch_size=args.per_device_eval_batch_size
-    )
+
 
     # Optimizer
     optimizer = AdamW(
@@ -484,6 +516,7 @@ if __name__ == '__main__':
         model.train()
         for step, batch in enumerate(train_dataloader):
             # compute num of losses
+            batch = batch.to('cuda')
             num_losses = batch["mask_time_indices"].sum()
             sub_attention_mask = batch.pop("sub_attention_mask", None)
             sub_attention_mask = (
@@ -540,7 +573,7 @@ if __name__ == '__main__':
                 if hasattr(model, "module"):
                     model.module.set_gumbel_temperature(gumbel_temperature)
                 else:
-                    model.set_gumbel_temperature(gumbel_temperature)
+                    model.wav2vec2.set_gumbel_temperature(gumbel_temperature)
 
                 progress_bar.update(1)
                 completed_steps += 1
@@ -557,12 +590,13 @@ if __name__ == '__main__':
                     outputs.diversity_loss = accelerator.gather_for_metrics(outputs.diversity_loss).sum()
                     percent_masked = accelerator.gather_for_metrics(percent_masked).sum()
 
+                codevector_perplexity = torch.mean(outputs.codevector_perplexity)
                 train_logs = {
                     "loss": (loss * args.gradient_accumulation_steps) / num_losses,
                     "constrast_loss": outputs.contrastive_loss / num_losses,
                     "div_loss": outputs.diversity_loss / num_losses,
                     "%_mask_idx": percent_masked / accelerator.num_processes,
-                    "ppl": outputs.codevector_perplexity,
+                    "ppl": codevector_perplexity,
                     "lr": torch.tensor(optimizer.param_groups[0]["lr"]),
                     "temp": torch.tensor(gumbel_temperature),
                     "grad_norm": torch.tensor(grad_norm),
@@ -578,11 +612,11 @@ if __name__ == '__main__':
 
             # save model every `args.saving_steps` steps
             if (step + 1) % (args.gradient_accumulation_steps * args.saving_steps) == 0:
-                if (args.push_to_hub and epoch < args.num_train_epochs - 1) or args.output_dir is not None:
+                if (epoch < args.num_train_epochs - 1) or output_dir is not None:
                     accelerator.wait_for_everyone()
                     unwrapped_model = accelerator.unwrap_model(model)
                     unwrapped_model.save_pretrained(
-                        args.output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save
+                        output_dir, is_main_process=accelerator.is_main_process, save_function=accelerator.save
                     )
 
                 # if (args.push_to_hub and epoch < args.num_train_epochs - 1) and accelerator.is_main_process:
@@ -595,90 +629,3 @@ if __name__ == '__main__':
             # if completed steps > `args.max_train_steps` stop
             if completed_steps >= args.max_train_steps:
                 break
-
-
-
-
-
-
-
-
-
-
-
-
-
-    if(args.train or args.train_from_ckpt):
-
-        model.freeze_feature_extractor()
-
-
-        data_collator = DataCollatorCTCWithPadding(processor=processor, padding=True)
-        is_regression = False
-
-        training_args = TrainingArguments(
-            output_dir=output_dir,
-            per_device_train_batch_size=args.per_device_train_batch_size,
-            per_device_eval_batch_size=args.per_device_eval_batch_size,
-            gradient_accumulation_steps=1,
-            evaluation_strategy="steps",
-            num_train_epochs=args.num_train_epochs,
-            fp16=True,
-            save_steps=100,
-            eval_steps=100,
-            logging_steps=50,
-            learning_rate=1e-4,
-            save_total_limit=10,
-            save_strategy="steps",
-            load_best_model_at_end=True,
-            # metric_for_best_model='accuracy',
-            gradient_checkpointing=True,
-
-        )
-        trainer = CTCTrainer(
-            model=model,
-            data_collator=data_collator,
-            args=training_args,
-            compute_metrics=compute_metrics,
-            train_dataset=train_dataset,
-            eval_dataset=eval_dataset,
-            tokenizer=processor.feature_extractor,
-        )
-        trainer.train()
-        trainer.save_model(best_model_dir)
-
-    '''
-        Evaluation
-    '''
-    if(args.eval):
-        model_name_or_path = args.ckpt_path
-        config = AutoConfig.from_pretrained(model_name_or_path)
-        model = create_model(config=config, embedding_type=embedding_dict[embedding_type], lb_audio_pretrained_weights=lb_audio_pretrained_weights,
-                                 bp_ecg_pretrained_weights=bp_ecg_pretrained_weights)
-        model = model.to(device)
-        model.load_state_dict(torch.load(Path(model_name_or_path) / "pytorch_model.bin"))
-
-        def predict(batch, processor=processor):
-            features = processor(batch["input_values"], sampling_rate=processor.feature_extractor.sampling_rate,
-                                 return_tensors="pt", padding=True)
-            input_values = features.input_values.to(device)
-            attention_mask = features.attention_mask.to(device)
-            with torch.no_grad():
-                logits = model(input_values, attention_mask=attention_mask).logits
-            pred_ids = torch.argmax(logits, dim=-1).detach().cpu().numpy()
-            batch["predicted"] = pred_ids
-            return batch
-
-        eval_dataset = test_dataset.map(
-            preprocess_function,
-            batch_size=100,
-            batched=True,
-            num_proc=2
-        )
-        result = eval_dataset.map(predict, batched=True, batch_size=8)
-        label_names = [config.id2label[i] for i in range(config.num_labels)]
-        y_true = [config.label2id[name] for name in result["class"]]
-        y_pred = result["predicted"]
-        print(classification_report(y_true, y_pred, target_names=label_names))
-        conf_matrix, accuracy, f1, kappa = evaluate_classifier(torch.tensor(y_pred), torch.tensor(y_true))
-        print(conf_matrix, accuracy, f1, kappa)
