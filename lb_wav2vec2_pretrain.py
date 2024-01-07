@@ -401,7 +401,7 @@ if __name__ == '__main__':
             # remove_columns=raw_datasets['train'].colomn_names,
             batch_size=100,
             batched=True,
-            num_proc=2
+            num_proc=8
         )
 
     # Looking for best checkpoint
